@@ -13,5 +13,9 @@ game = "armoredcore6"
 id = "paint-menu"
 path = 'mod'
 
+# NativePaint: the extra rows in the Paint screen (its menu files are in mod).
+[[natives]]
+path = 'native_paint.dll'
+
 [[natives]]
 path = 'paint_menu.dll'

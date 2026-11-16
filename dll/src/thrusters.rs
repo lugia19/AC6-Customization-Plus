@@ -1,33 +1,24 @@
-//! Feeds the custom generator flames (fxr/build_fxrs.mjs) the player's thruster color (lib.rs STORAGE_COLOR_OFFSET in
-//! the paint block) through FXR external values, red, green, blue each: 900001-900003 what the additive copy of a flame
-//! adds, 900004-900006 what the subtractive copy removes from the background (both copies play together; see
-//! set_channels), 900007-900009 the plain color, for alpha-blended particles (smoke). Served as 1 + the amount (1..2),
-//! so 0 keeps meaning "no DLL" (the flames' wrappers then play stock). The color is lib.rs thruster_color: white
-//! until the player picks one.
+//! Feeds the custom generator flames (fxr/build_fxrs.mjs) the player's thruster color (NativePaint's THRUSTER row)
+//! through FXR external values, red, green, blue each: 900001-900003 what the additive copy of a flame adds,
+//! 900004-900006 what the subtractive copy removes from the background (both copies play together; see set_channels),
+//! 900007-900009 the plain color, for alpha-blended particles (smoke). Served as 1 + the amount (1..2), so 0 keeps
+//! meaning "no DLL" (the flames' wrappers then play stock). White until the player picks a color.
 //!
 //! Effects read external values through 0x142b56480, effectively `float *get(value_block, float *out, int id)`.
 //!
-//! The player's paint block: [[[GameDataMan]+8]+0x788] + 0x14C (verified in game: the Paint screen edits this block
-//! in place; CE table AC6_TGA labels its first section "Head" at 0x108 + 0x44). A polling thread finds GameDataMan,
-//! reads the chain with checked reads (it's null while loading) and caches the color for the hook.
+//! A polling thread claims the row and caches the color for the hook.
 
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::time::Duration;
 
-use crate::{DEFAULT_THRUSTER_COLOR, Hook, STORAGE_COLOR_OFFSET, log, orig, read, thruster_color};
+use crate::native_paint_client::{self, ROW_THRUSTER};
+use crate::{Hook, log, orig};
 
 const EXT_FIRST_CHANNEL: i32 = 900001;
 const CHANNEL_COUNT: usize = 9;
 const POLL_INTERVAL: Duration = Duration::from_millis(200);
 
-// GameDataMan's static pointer: `mov rax,[rip+x]` at the start of this pattern (CE table AC6_TGA v0.4.4).
-const GAME_DATA_MAN_PATTERN: [Option<u8>; 17] = [
-    None, Some(0x8b), Some(0x05), None, None, None, None, None, Some(0x85), Some(0xc0), None, None, None,
-    Some(0x8b), Some(0x40), None, Some(0xc3),
-];
-const PLAYER_DATA_OFFSET: usize = 0x8;
-const PAINT_DATA_OFFSET: usize = 0x788;
-const PAINT_BLOCK_OFFSET: usize = 0x14c;
+const DEFAULT_COLOR: u32 = 0xFFFFFF;
 
 static ORIG_GET_EXT_VALUE: AtomicUsize = AtomicUsize::new(0);
 // Served values for 900001-900009 (add, remove, plain: red, green, blue each), as f32 bits (see set_channels).
@@ -42,10 +33,6 @@ pub(crate) fn hook() -> Hook {
     (0x142b56480, [0x44, 0x89, 0x44, 0x24, 0x18, 0x48], get_ext_value_impl as *const (), &ORIG_GET_EXT_VALUE)
 }
 
-unsafe extern "system" {
-    fn GetModuleHandleW(name: *const u16) -> usize;
-}
-
 /// Called for every external value read of every effect. Our IDs don't need the game's lookup at all (nothing else
 /// provides them), so it's skipped for them.
 unsafe extern "system" fn get_ext_value_impl(block: *mut u8, out: *mut u32, id: i32) -> *mut u32 {
@@ -56,54 +43,6 @@ unsafe extern "system" fn get_ext_value_impl(block: *mut u8, out: *mut u32, id: 
     let channel = (id - EXT_FIRST_CHANNEL) as usize;
     unsafe { *out = CHANNELS[channel].load(Ordering::Relaxed) };
     out
-}
-
-/// Whether `bytes` matches GAME_DATA_MAN_PATTERN (None = any byte).
-fn matches_pattern(bytes: &[u8]) -> bool {
-    GAME_DATA_MAN_PATTERN.iter().zip(bytes).all(|(expected, actual)| match expected {
-        Some(byte) => byte == actual,
-        None => true,
-    })
-}
-
-/// Finds GameDataMan's static pointer: the game exe's code section is searched for GAME_DATA_MAN_PATTERN, whose
-/// `mov rax,[rip+offset]` holds the pointer's address relative to the end of that instruction.
-fn find_game_data_man() -> Option<usize> {
-    // PE layout: the offset of the PE header is at 0x3c; in it, the section count at +6, the optional header's size at
-    // +0x14 and the section headers right after the optional header (at +0x18 + its size), 0x28 bytes each: name at +0,
-    // size at +8, address (relative to the module) at +12.
-    let base = unsafe { GetModuleHandleW(std::ptr::null()) };
-    let pe_header = base + read::<u32>(base + 0x3c)? as usize;
-    let section_count = read::<u16>(pe_header + 6)? as usize;
-    let optional_header_size = read::<u16>(pe_header + 0x14)? as usize;
-    let first_section = pe_header + 0x18 + optional_header_size;
-    for i in 0..section_count {
-        let section = first_section + i * 0x28;
-        if read::<[u8; 8]>(section)? != *b".text\0\0\0" {
-            continue;
-        }
-        let code_size = read::<u32>(section + 8)? as usize;
-        let code_start = base + read::<u32>(section + 12)? as usize;
-        let code = unsafe { std::slice::from_raw_parts(code_start as *const u8, code_size) };
-
-        let hit = code.windows(GAME_DATA_MAN_PATTERN.len()).position(matches_pattern)?;
-        // The mov is 7 bytes; its last 4 are the offset from the next instruction to the pointer.
-        let mov_end = code_start + hit + 7;
-        let offset = i32::from_le_bytes(code[hit + 3..hit + 7].try_into().ok()?);
-        return Some(mov_end.wrapping_add_signed(offset as isize));
-    }
-    None
-}
-
-/// The stored thruster color (a u32 of RGBA bytes), if the player's paint chain resolves right now.
-fn stored_color(game_data_man: usize) -> Option<u32> {
-    let game_data = read::<usize>(game_data_man)?;
-    let player = read::<usize>(game_data + PLAYER_DATA_OFFSET)?;
-    let paint = read::<usize>(player + PAINT_DATA_OFFSET)?;
-    if paint == 0 {
-        return None;
-    }
-    read::<u32>(paint + PAINT_BLOCK_OFFSET + STORAGE_COLOR_OFFSET)
 }
 
 /// sRGB (what the color picker shows) to linear light.
@@ -142,32 +81,28 @@ fn set_channels(rgb: u32) {
     }
 }
 
-/// Stored color -> the thruster color as 0xRRGGBB.
-fn to_rgb(stored: u32) -> u32 {
-    let [r, g, b, _] = thruster_color(stored).to_le_bytes();
-    (r as u32) << 16 | (g as u32) << 8 | b as u32
-}
-
 fn poll_loop() {
-    let Some(game_data_man) = find_game_data_man() else {
-        log("thrusters: GameDataMan pattern not found, flames stay at the default color");
-        return;
-    };
-    log(&format!("thrusters: GameDataMan at {game_data_man:#x}"));
+    let mut claimed = false;
     let mut last = None;
     loop {
         std::thread::sleep(POLL_INTERVAL);
-        let Some(stored) = stored_color(game_data_man) else { continue };
-        if last != Some(stored) {
-            last = Some(stored);
-            let rgb = to_rgb(stored);
+        if !claimed {
+            claimed = native_paint_client::claim_row(ROW_THRUSTER, "THRUSTER", DEFAULT_COLOR);
+            if claimed {
+                log("thrusters: THRUSTER row claimed");
+            }
+            continue;
+        }
+        let Some(rgb) = native_paint_client::color(ROW_THRUSTER) else { continue };
+        if last != Some(rgb) {
+            last = Some(rgb);
             set_channels(rgb);
-            log(&format!("thrusters: player's stored color {stored:08x} -> flames #{rgb:06X}"));
+            log(&format!("thrusters: flames #{rgb:06X}"));
         }
     }
 }
 
 pub(crate) fn start() {
-    set_channels(to_rgb(DEFAULT_THRUSTER_COLOR));
+    set_channels(DEFAULT_COLOR);
     std::thread::spawn(poll_loop);
 }

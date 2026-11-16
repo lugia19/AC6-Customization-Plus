@@ -2,8 +2,9 @@
 
     python build.py --game "<...>/ARMORED CORE VI FIRES OF RUBICON/Game" --witchy "<...>/WitchyBND.exe"
 
-Needs node/npm, cargo (stable) and WitchyBND 3.x. Writes package/: the mod folder (regulation, custom flames, Paint
-menu layout, the row's label in every language), the DLL and the me3 profile.
+Needs node/npm, cargo (stable), WitchyBND 3.x and a built NativePaint (its package/ folder: --native-paint, by default
+the native-paint folder next to this one). Writes package/: the mod folder (regulation, custom flames, NativePaint's
+Paint menu files), both DLLs and the me3 profile.
 """
 import argparse
 import atexit
@@ -13,7 +14,6 @@ import re
 import shutil
 import struct
 import subprocess
-import sys
 import xml.etree.ElementTree as ET
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -27,24 +27,6 @@ STOCK_COLOR_TYPES = (0, 1, 2)
 CUSTOM_TYPE_SHIFT = 3
 # Player generators are 650xxxxx; the NPC versions (659xxxxx) are only used by special ACs and stay untouched.
 NPC_GENERATOR_IDS_START = 65900000
-
-# Paint screen layout (02_coloring.gfx, sprite 268 = ColorAndMaterialList): a 7th color row (symbol 244, like the
-# other colors) below DEVICE, with pattern and weathering moved down a row and renamed so the rows stay in data order.
-COLOR_LIST_SPRITE = 268
-COLOR_LIST_EDITS = [
-    "move:Item_8_0:Item_9_0:2760:15500",
-    "move:Item_7_0:Item_8_0:2760:13440",
-    "add:244:12:Item_7_0:2760:12000",
-]
-
-# The row's label: color rows use text 210111 + slot, in menu.msgbnd.dcx's menu text FMG. English in every language for
-# now.
-COLOR_LABEL_BASE = 210111
-EXTRA_SLOT = 9  # dll/src/lib.rs EXTRA_SLOT
-LABEL_FMG = "FNR_メニューテキスト.fmg"
-LABEL_ID = COLOR_LABEL_BASE + EXTRA_SLOT
-LABEL_AFTER_ID = 210116  # DEVICE
-LABEL_TEXT = "THRUSTER"
 
 FIELD_SIZES = {'s8': 1, 'u8': 1, 'dummy8': 1, 's16': 2, 'u16': 2, 's32': 4, 'u32': 4, 'f32': 4, 'angle32': 4,
                'b32': 4, 'f64': 8, 'fixstr': 1, 'fixstrW': 2}
@@ -121,10 +103,13 @@ def unpacked(path):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--game", required=True, help="the game's Game folder (with regulation.bin, sfx/ and menu/)")
+    parser.add_argument("--game", required=True, help="the game's Game folder (with regulation.bin and sfx/)")
     parser.add_argument("--witchy", required=True, help="WitchyBND.exe (3.x)")
+    parser.add_argument("--native-paint", default=os.path.join(os.path.dirname(ROOT), "native-paint", "package"),
+                        help="NativePaint's built package folder (native_paint.dll and mod/)")
     args = parser.parse_args()
     defs = os.path.join(os.path.dirname(args.witchy), "Assets", "Paramdex", "AC6", "Defs")
+    assert os.path.isfile(os.path.join(args.native_paint, "native_paint.dll")), f"no NativePaint in {args.native_paint}"
 
     # The DLL doesn't depend on anything below: build it meanwhile.
     cargo = subprocess.Popen(["cargo", "+stable", "build", "--release"], cwd=os.path.join(ROOT, "dll"))
@@ -143,15 +128,7 @@ def main():
     os.makedirs(WORK)
     regulation = shutil.copy(os.path.join(args.game, "regulation.bin"), WORK)
     effects = shutil.copy(os.path.join(args.game, "sfx", "sfxbnd_commoneffects.ffxbnd.dcx"), WORK)
-    msg_root = os.path.join(args.game, "msg")
-    menu_texts = {}  # language -> copy of its menu.msgbnd.dcx
-    for lang in sorted(os.listdir(msg_root)):
-        source = os.path.join(msg_root, lang, "menu.msgbnd.dcx")
-        if os.path.isfile(source):
-            os.makedirs(os.path.join(WORK, "msg", lang))
-            menu_texts[lang] = shutil.copy(source, os.path.join(WORK, "msg", lang))
-    assert menu_texts, "no msg/*/menu.msgbnd.dcx found"
-    archives = [regulation, effects, *menu_texts.values()]
+    archives = [regulation, effects]
     witchy(archives, [unpacked(a) for a in archives])
 
     params = unpacked(regulation)
@@ -211,48 +188,16 @@ def main():
     generators.save()
     print(f"{switched} player generators switched to their custom flames")
 
-    # The row's label, in every language's menu text (FMG -> XML, insert after DEVICE, XML -> FMG).
-    label_fmgs = {}
-    for lang, archive in menu_texts.items():
-        fmg = os.path.join(unpacked(archive), LABEL_FMG)
-        if os.path.isfile(fmg):
-            label_fmgs[lang] = fmg
-        else:  # some languages (araae) keep their menu text elsewhere
-            # (no file name in the message: Japanese breaks redirected output on cp1252 consoles)
-            print(f"{lang}: menu.msgbnd.dcx has no menu text FMG, label left out")
-    assert label_fmgs, "no language's menu.msgbnd.dcx has the menu text FMG"
-    witchy(label_fmgs.values(), [fmg + ".xml" for fmg in label_fmgs.values()])
-    for lang, fmg in label_fmgs.items():
-        xml_path = fmg + ".xml"
-        text = open(xml_path, encoding="utf-8-sig").read()
-        anchor = re.search(rf'<text id="{LABEL_AFTER_ID}">.*?</text>\r?\n', text)
-        assert anchor and f'id="{LABEL_ID}"' not in text, f"unexpected menu text in {lang}"
-        text = text[:anchor.end()] + f'<text id="{LABEL_ID}">{LABEL_TEXT}</text>\n' + text[anchor.end():]
-        open(xml_path, "w", encoding="utf-8-sig").write(text)
-    witchy([fmg + ".xml" for fmg in label_fmgs.values()], label_fmgs.values())
-    for fmg in label_fmgs.values():
-        os.remove(fmg + ".xml")  # or it would be packed into the archive too
-
-    label_archives = [menu_texts[lang] for lang in label_fmgs]
-    repacked = [regulation, effects, *label_archives]
-    witchy([unpacked(a) for a in repacked], repacked)
-
-    # Paint screen layout.
-    menu_out = os.path.join(WORK, "02_coloring.gfx")
-    subprocess.run([sys.executable, os.path.join(ROOT, "tools", "gfx_place.py"), os.path.join(args.game, "menu", "02_coloring.gfx"),
-                    menu_out, str(COLOR_LIST_SPRITE), *COLOR_LIST_EDITS], check=True)
+    witchy([unpacked(a) for a in archives], archives)
 
     assert cargo.wait() == 0, "cargo build failed"
 
     shutil.rmtree(PACKAGE, ignore_errors=True)
-    for sub in ("sfx", "menu"):
-        os.makedirs(os.path.join(PACKAGE, "mod", sub))
+    # NativePaint's files, unchanged (its DLL, the Paint movie in mod/), then ours.
+    shutil.copytree(args.native_paint, PACKAGE)
+    os.makedirs(os.path.join(PACKAGE, "mod", "sfx"))
     shutil.copy(regulation, os.path.join(PACKAGE, "mod"))
     shutil.copy(effects, os.path.join(PACKAGE, "mod", "sfx"))
-    shutil.copy(menu_out, os.path.join(PACKAGE, "mod", "menu"))
-    for lang in label_fmgs:
-        os.makedirs(os.path.join(PACKAGE, "mod", "msg", lang))
-        shutil.copy(menu_texts[lang], os.path.join(PACKAGE, "mod", "msg", lang))
     shutil.copy(os.path.join(ROOT, "dll", "target", "release", "paint_menu.dll"), PACKAGE)
     shutil.copy(os.path.join(ROOT, "paint-menu.me3"), PACKAGE)
     print(f"Built {PACKAGE}")

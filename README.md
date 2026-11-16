@@ -8,7 +8,8 @@ boosting, quick boosting, assault boosting, all of it.
 1. Grab the zip from [Releases](../../releases) (or build it, below), extract it anywhere, and launch
    `paint-menu.me3` with [me3](https://github.com/garyttierney/me3).
    It uses its own save, `PaintMenu.sl2`, which me3 copies from your real save on first launch.
-2. In the garage, Paint: there's a new THRUSTER row under DEVICE. It works like DEVICE, one color for the whole AC.
+2. In the garage, Paint: there's a new THRUSTER row below WEATHERING, on its own panel. It works like DEVICE, one
+   color for the whole AC.
 
 The color is stored in the AC's paint data, so it's saved with the AC and carried by designs. Until you pick
 one, it's white. Dark colors work too: the flames darken what's behind them instead of glowing.
@@ -21,9 +22,9 @@ one, it's white. Dark colors work too: the flames darken what's behind them inst
 
 ## How it works
 
-- **Paint row.** The menu layout (`menu/02_coloring.gfx`) gets a 7th color row, patched in by `tools/gfx_place.py`.
-  The DLL hooks the Paint screen so that row exists, edits as a single color, and reads and writes its color in a part
-  of the AC's paint data the game never uses (section 7, color slot 0).
+- **Paint row.** The row comes from NativePaint (`native_paint.dll` plus its `menu/02_coloring.gfx`, bundled
+  unchanged): a small library for extra color rows in the Paint screen. It keeps the color in a part of the
+  AC's paint data the game never uses (section 7, color slot 0).
 - **Flames.** Every player generator gets a new thruster color type, whose flames are wrapper effects built by
   `fxr/build_fxrs.mjs`. Enemy ACs use the same generators, so when a wrapper spawns, it asks the DLL whether it's on
   your AC. The DLL knows exactly: every character drives its effects through its own slots, and the DLL tags each
@@ -32,7 +33,7 @@ one, it's white. Dark colors work too: the flames darken what's behind them inst
   from the cutscene rather than your AC and plays stock. Yours play two recolored copies of the stock flame, one adding the color and one subtracting what the color lacks
   (that's what makes dark colors work). It decides once and sticks to it, since a flame it already started keeps
   playing even if it switches.
-- **Color.** The DLL reads your color from the paint data and serves it to the flames as FXR external values, the
+- **Color.** The DLL gets your color from NativePaint and serves it to the flames as FXR external values, the
   same way as [AC6-FXR-DLL-POC](https://github.com/lugia19/AC6-FXR-DLL-POC). Without the DLL, everything plays stock.
   
   The DLL does all the color math, and the flames only multiply by what it serves. That matters: an FXR can only take
@@ -46,8 +47,9 @@ one, it's white. Dark colors work too: the flames darken what's behind them inst
 python build.py --game "<...>/ARMORED CORE VI FIRES OF RUBICON/Game" --witchy "<...>/WitchyBND.exe"
 ```
 
-Needs Python 3, node/npm, cargo (stable) and [WitchyBND](https://github.com/ividyon/WitchyBND) 3.x. It writes
-`package/`: the mod folder, `paint_menu.dll` and `paint-menu.me3`.
+Needs Python 3, node/npm, cargo (stable), [WitchyBND](https://github.com/ividyon/WitchyBND) 3.x and a built
+NativePaint (`--native-paint <its package folder>`, by default `../native-paint/package`). It writes `package/`: the
+mod folder, `paint_menu.dll`, `native_paint.dll` and `paint-menu.me3`.
 
 WitchyBND 3.0.1 refuses to repack 1.09.1 regulations out of the box: raise the version in its
 `Assets/Paramdex/AC6/Upgrader/version.txt` to `1_09_1_0042L`.
