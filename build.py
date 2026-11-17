@@ -209,8 +209,8 @@ def main():
     subprocess.run([sys.executable, os.path.join(ROOT, "tools", "prepare_hud.py"),
                     os.path.join(args.game, "menu", "01_000_fe.gfx"),
                     os.path.join(PACKAGE, "mod", "menu", "01_000_fe.gfx")], check=True)
-    shutil.copy(os.path.join(ROOT, "dll", "target", "release", "paint_menu.dll"), PACKAGE)
-    shutil.copy(os.path.join(ROOT, "paint-menu.me3"), PACKAGE)
+    shutil.copy(os.path.join(ROOT, "dll", "target", "release", "customization_plus.dll"), PACKAGE)
+    shutil.copy(os.path.join(ROOT, "customization-plus.me3"), PACKAGE)
     print(f"Built {PACKAGE}")
 
 

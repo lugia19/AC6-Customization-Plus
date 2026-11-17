@@ -12,7 +12,7 @@
 //!   player_flames.rs.
 //! - 0x141609040 menu movie lookup and 0x1415f40b0 the Scaleform file opener: the HUD's look, in hud.rs.
 //!
-//! Logs to Game\debug-logs\paint_menu.log.
+//! Logs to Game\debug-logs\customization_plus.log.
 
 mod device;
 mod hud;
@@ -90,7 +90,7 @@ fn init() {
         .and_then(|p| p.parent().map(|p| p.join("debug-logs")))
         .unwrap_or_else(|| "debug-logs".into());
     let _ = std::fs::create_dir_all(&dir);
-    if let Ok(f) = File::create(dir.join("paint_menu.log")) {
+    if let Ok(f) = File::create(dir.join("customization_plus.log")) {
         let _ = LOG.set(Mutex::new(f));
     }
     match install() {

@@ -1,6 +1,6 @@
 # Whose flame is it? Effect ownership in AC6 (1.09.1)
 
-paint-menu colors only the player's thruster flames, but enemy ACs use the same flame effects. This page explains how
+Customization Plus colors only the player's thruster flames, but enemy ACs use the same flame effects. This page explains how
 the DLL tells them apart exactly, and how far the same chain goes for effects in general. Addresses are for the
 1.09.1 exe.
 
@@ -42,7 +42,7 @@ constructs what.
 Characters have other slot kinds too (in ER: footstep effects, bullet emitters, burning...); only these two SFX
 slot classes carried effects in our tests.
 
-## How paint-menu uses it
+## How Customization Plus uses it
 
 Each character updates its slots once per frame. The slot update is a virtual call, `update(slot, dt, ChrIns**
 owner)`, and the owner is right there as an argument:
@@ -51,7 +51,7 @@ owner)`, and the owner is right there as an argument:
 - `0x14092bcd0`: `ChrMultiSfxSlot`'s update.
 
 The DLL hooks both (`dll/src/player_flames.rs`). After the original update, it walks that slot's handles and, for
-each paint-menu flame, attaches external value 900010 (2 = the player's, 1 = someone else's). It uses the same setter
+each Customization Plus flame, attaches external value 900010 (2 = the player's, 1 = someone else's). It uses the same setter
 the game uses for the camera distance value: `0x141625930`, `set_value(manager, handle, id, value)`, which only uses
 the handle. Each flame effect waits for 900010 before choosing between the stock and the colored version.
 
@@ -59,7 +59,7 @@ Things to know:
 
 - **Don't walk slot lists from inside a slot update.** The container update (`0x1407464e0`) detaches the whole list
   while it updates the slots and rebuilds it afterwards, so mid-update the list is empty or partial. From another
-  thread, between updates, it's normally intact. paint-menu doesn't walk lists at all: the hook already has the slot.
+  thread, between updates, it's normally intact. Customization Plus doesn't walk lists at all: the hook already has the slot.
 - **A new effect shows up in its slot's handles one frame after the update that spawned it**, so it gets tagged on
   the next update (7 ms median in our tests). The flame effects wait up to 0.3 s for an answer, so that's fine.
 - **Effects spawned outside the slots get no answer.** In the arena intro cutscene, one pair of flames (9412021) is
@@ -73,7 +73,7 @@ Things to know:
 - **At runtime**: a research DLL recorded which owner each thruster slot was updated with and checked that the slot
   sat in that owner's list: 3,233 times yes, 0 times in another character's list. For thruster flames, the owner
   found through the chain agreed with "the AC nearest to the flame" on 628 of 631 flames, in a close-range AC fight.
-- **Against the old rule**: paint-menu used to decide by position (the flame is the player's if it's near the player
+- **Against the old rule**: Customization Plus used to decide by position (the flame is the player's if it's near the player
   and nearer to them than to any other AC). Both rules ran side by side over arena fights: they agreed on every
   flame except a few at the arena intro, which is where the position rule was known to fail.
 
@@ -91,7 +91,7 @@ The same chain, applied to every effect over an arena fight, AC Test alone (one 
 
 So effects a character carries over time go through its slots; effects that live on their own don't. In the
 mission, non-AC enemies (including the boss) went through `ChrMultiSfxSlot` too, and never used the player
-generator flames that paint-menu replaces.
+generator flames that Customization Plus replaces.
 
 **Ranged weapons don't follow this chain**: their bullets, missiles and impacts have no owner through the slots.
 Bullets presumably keep their owner somewhere (for damage), but that's a different structure we haven't looked at.

@@ -102,7 +102,7 @@ The paint data is 14 sections of 0x44 bytes, saved and carried by designs as one
 
 Sections: 0 head, 1 core, 2 R arm, 3 L arm, 4 legs, 5 R weapon, 8 L weapon, 11 the leftover Extension unit, 12 R
 back, 13 L back. The part categories (`0x14045d960`) never write 6, 7, 9 and 10; 10's header gets written by something
-else and Sundance's Extension parts mod uses it. Rows 0, 1, 2 use sections 7, 6, 9 (row 0 on 7 because paint-menu
+else and Sundance's Extension parts mod uses it. Rows 0, 1, 2 use sections 7, 6, 9 (row 0 on 7 because version
 0.1.0 stored its thruster color there): the color in color 0, the choice in material 0. The rest of those sections
 is unused.
 

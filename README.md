@@ -1,35 +1,43 @@
-# AC6-Thruster-Customization
+# AC6-Customization-Plus
 
-Adds a THRUSTER color to the Paint screen in Armored Core VI (1.09.1). Your AC's thruster flames take that color:
-boosting, quick boosting, assault boosting, all of it.
+More to customize in Armored Core VI's Paint screen (1.09.1), saved with each AC:
+
+- **Thruster color.** Your AC's thruster flames take it: boosting, quick boosting, assault boosting, all of it.
+- **HUD color, warning color and opacity** for the in-mission HUD.
+- **Light brightness**, a setting the game has but hides.
 
 ## Use
 
 1. Grab the zip from [Releases](../../releases) (or build it, below), extract it anywhere, and launch
-   `paint-menu.me3` with [me3](https://github.com/garyttierney/me3).
-   It uses its own save, `PaintMenu.sl2`, which me3 copies from your real save on first launch.
-2. In the garage, Paint: there's a new THRUSTER row below WEATHERING, on its own panel. It works like DEVICE, one
-   color for the whole AC.
+   `customization-plus.me3` with [me3](https://github.com/garyttierney/me3).
+   It uses its own save, `CustomizationPlus.sl2`, which me3 copies from your real save on first launch.
+2. In the garage, Paint: below WEATHERING there's a new panel, ENTIRE AC, with three rows. Each is one value for
+   the whole AC, whichever part tab is open.
 
-The color is stored in the AC's paint data, so it's saved with the AC and carried by designs. Until you pick
-one, it's white. Dark colors work too: the flames darken what's behind them instead of glowing.
+**THRUSTER** works like DEVICE: a color. Until you pick one, it's white. Dark colors work too: the flames darken
+what's behind them instead of glowing.
 
-Below it are two rows for the in-mission HUD:
+The other two are for the in-mission HUD:
 - **HUD**: its color, and an opacity (its Material menu, 0% up to 100%).
 - **HUD WARNING**: the color of warnings. Every state color follows it: red becomes this color, and orange,
   yellow, green and the rest keep their distance from it.
 
 The defaults (the stock pale cyan, red, 100%) are the stock HUD. They apply from the next sortie (AC TEST counts).
 
-It also brings back a setting the game has but hides: how bright the AC's lights are. Confirming the DEVICE row
-now opens the same Color / Material panel as the other rows, and its Material is "Light Source Intensity", ten
-levels, per part like any material. NPC ACs use it; the stock menu just never let you reach it.
+**DEVICE** gets its hidden setting back: how bright the AC's lights are. Confirming the DEVICE row now opens the
+same Color / Material panel as the other rows, and its Material is the brightness, ten levels from 10% to 450%,
+per part like any material. NPC ACs use it; the stock menu just never let you reach it.
+
+Everything is stored in the AC's paint data, so it's saved with the AC and carried by designs.
+
+Coming from 0.1.0 (AC6-Thruster-Customization)? The save file has a new name: rename `PaintMenu.sl2` to
+`CustomizationPlus.sl2` in your save folder to keep what you did there.
 
 ## Known issues
 
 - The Paint screen's pattern thumbnail can stop updating after going in and out of it a few times. That's an me3 bug
   with overridden menu files, not this mod: [me3#902](https://github.com/garyttierney/me3/issues/902).
-- The THRUSTER label is in English in every language.
+- The new rows' labels and choices are in English in every language.
 
 ## How it works
 
@@ -79,7 +87,7 @@ python build.py --game "<...>/ARMORED CORE VI FIRES OF RUBICON/Game" --witchy "<
 ```
 
 Needs Python 3, node/npm, cargo (stable) and [WitchyBND](https://github.com/ividyon/WitchyBND) 3.x. It writes
-`package/`: the mod folder, `paint_menu.dll` and `paint-menu.me3`.
+`package/`: the mod folder, `customization_plus.dll` and `customization-plus.me3`.
 
 WitchyBND 3.0.1 refuses to repack 1.09.1 regulations out of the box: raise the version in its
 `Assets/Paramdex/AC6/Upgrader/version.txt` to `1_09_1_0042L`.

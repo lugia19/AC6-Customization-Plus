@@ -2,7 +2,7 @@
 // - a wrapper at S + WRAPPER_OFFSET (what the params point at), which plays either the stock S or two custom copies of
 //   it together (see wrapper());
 // - the copies at S + ADD_OFFSET and S + REMOVE_OFFSET: plain copies of S (and of every FXR S references, remapped to
-//   the same copy), every color whitened to its brightness and tinted by external values the paint-menu DLL serves
+//   the same copy), every color whitened to its brightness and tinted by external values the DLL serves
 //   for the player's thruster color (dll/src/thrusters.rs set_channels):
 //   - add: the flame with the color added (lights and lens flares too); alpha-blended particles (smoke) get the plain
 //     color, which they can show as is;
