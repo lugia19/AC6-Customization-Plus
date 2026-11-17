@@ -84,14 +84,22 @@ fn set_channels(rgb: u32) {
 fn poll_loop() {
     let mut claimed = false;
     let mut last = None;
+    let mut last_choice = None;
     loop {
         std::thread::sleep(POLL_INTERVAL);
         if !claimed {
             claimed = native_paint_client::claim_row(ROW_THRUSTER, "THRUSTER", DEFAULT_COLOR);
             if claimed {
-                log("thrusters: THRUSTER row claimed");
+                // TEST: a list of flame types; nothing uses the choice yet.
+                let choices = native_paint_client::set_choices(ROW_THRUSTER, &["Normal", "Plasma", "Coral"], 0);
+                log(&format!("thrusters: THRUSTER row claimed (choices: {choices})"));
             }
             continue;
+        }
+        let choice = native_paint_client::choice(ROW_THRUSTER);
+        if choice != last_choice {
+            last_choice = choice;
+            log(&format!("thrusters: flame type {choice:?}"));
         }
         let Some(rgb) = native_paint_client::color(ROW_THRUSTER) else { continue };
         if last != Some(rgb) {

@@ -14,6 +14,7 @@ import re
 import shutil
 import struct
 import subprocess
+import sys
 import xml.etree.ElementTree as ET
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -106,7 +107,7 @@ def main():
     parser.add_argument("--game", required=True, help="the game's Game folder (with regulation.bin and sfx/)")
     parser.add_argument("--witchy", required=True, help="WitchyBND.exe (3.x)")
     parser.add_argument("--native-paint", default=os.path.join(os.path.dirname(ROOT), "native-paint", "package"),
-                        help="NativePaint's built package folder (native_paint.dll and mod/)")
+                        help="NativePaint's built package folder (native_paint.dll and mod/), in its repo")
     args = parser.parse_args()
     defs = os.path.join(os.path.dirname(args.witchy), "Assets", "Paramdex", "AC6", "Defs")
     assert os.path.isfile(os.path.join(args.native_paint, "native_paint.dll")), f"no NativePaint in {args.native_paint}"
@@ -187,6 +188,11 @@ def main():
     assert switched, "no generator had a stock thruster color type"
     generators.save()
     print(f"{switched} player generators switched to their custom flames")
+
+    # TEST: the THRUSTER row (NativePaint's row 0) has three choices (dll/src/thrusters.rs), which need materials.
+    add_materials = os.path.join(os.path.dirname(args.native_paint), "tools", "add_choice_materials.py")
+    subprocess.run([sys.executable, add_materials, os.path.join(params, "PlayerMaterialPresetParam.param"), "0", "3"],
+                   check=True)
 
     witchy([unpacked(a) for a in archives], archives)
 
