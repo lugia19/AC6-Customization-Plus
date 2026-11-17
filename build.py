@@ -189,10 +189,12 @@ def main():
     generators.save()
     print(f"{switched} player generators switched to their custom flames")
 
-    # TEST: the THRUSTER row (NativePaint's row 0) has three choices (dll/src/thrusters.rs), which need materials.
+    # The rows' choices are listed as materials, which have to exist: NativePaint's row 0 (THRUSTER) has three (TEST;
+    # dll/src/thrusters.rs), row 1 (HUD) eleven (dll/src/hud.rs OPACITIES).
     add_materials = os.path.join(os.path.dirname(args.native_paint), "tools", "add_choice_materials.py")
-    subprocess.run([sys.executable, add_materials, os.path.join(params, "PlayerMaterialPresetParam.param"), "0", "3"],
-                   check=True)
+    for row, choices in [(0, 3), (1, 11)]:
+        subprocess.run([sys.executable, add_materials, os.path.join(params, "PlayerMaterialPresetParam.param"),
+                        str(row), str(choices)], check=True)
 
     witchy([unpacked(a) for a in archives], archives)
 

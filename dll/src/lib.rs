@@ -1,6 +1,6 @@
 //! The player's thruster flames take the color of the THRUSTER row in the Paint screen (Armored Core VI 1.09.1). The
 //! row and its color come from NativePaint (native_paint.dll, row 0: saved with the AC, white until picked).
-//! Also brings back the DEVICE row's brightness setting (device.rs).
+//! Also brings back the DEVICE row's brightness setting (device.rs) and adds a HUD row (hud.rs, NativePaint's row 1).
 //!
 //! Hooks:
 //! - 0x142b56480 FXR external value read: serves the color to the flames, in thrusters.rs.
@@ -11,6 +11,7 @@
 //! Logs to Game\debug-logs\paint_menu.log.
 
 mod device;
+mod hud;
 mod native_paint_client;
 mod player_flames;
 mod thrusters;
@@ -97,6 +98,7 @@ fn init() {
         Ok(()) => {
             log("hooks installed");
             thrusters::start();
+            hud::start();
         }
         Err(e) => log(&format!("not hooked: {e}")),
     }

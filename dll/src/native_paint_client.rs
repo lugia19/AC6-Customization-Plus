@@ -17,16 +17,16 @@
 
 use std::sync::OnceLock;
 
-// Rows (top to bottom), by client.
+// Rows (top to bottom); both are paint-menu's.
 pub const ROW_THRUSTER: u32 = 0;
 pub const ROW_HUD: u32 = 1;
 
 /// How many choices a row can have.
-pub const MAX_CHOICES: usize = 10;
+pub const MAX_CHOICES: usize = 36;
 
 /// The ID of the material a row's first choice needs in PlayerMaterialPresetParam; the others follow it.
 pub const fn first_material(row: u32) -> u32 {
-    40 + row * 15
+    100 + row * 100
 }
 
 // (row, text, text length, number) and (row, out)
