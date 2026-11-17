@@ -14,6 +14,10 @@ boosting, quick boosting, assault boosting, all of it.
 The color is stored in the AC's paint data, so it's saved with the AC and carried by designs. Until you pick
 one, it's white. Dark colors work too: the flames darken what's behind them instead of glowing.
 
+Below it is a HUD row: a color and an opacity (its Material menu, 100% down to 0%) for the in-mission HUD. The
+color tints the whole HUD, warnings included; white at 100% is the stock HUD. It applies from the next sortie (AC
+TEST counts).
+
 It also brings back a setting the game has but hides: how bright the AC's lights are. Confirming the DEVICE row
 now opens the same Color / Material panel as the other rows, and its Material is "Light Source Intensity", ten
 levels, per part like any material. NPC ACs use it; the stock menu just never let you reach it.
@@ -41,6 +45,11 @@ levels, per part like any material. NPC ACs use it; the stock menu just never le
   materials (90-99) for DEVICE, with their text and live preview, and the value is ordinary paint data. The DEVICE
   row was just built color-only, with no way into that menu. Four hooks build it like the other color rows
   (`dll/src/device.rs`).
+- **HUD.** The game loads the HUD movie (`menu/01_000_fe.gfx`) once and builds each mission's HUD from it. Its
+  root has 55 named elements (the player gauges, reticle, radar, alerts...), and a color transform on each one
+  tints and fades everything inside it. When a sortie asks for the movie and the HUD row has changed, the DLL drops
+  the loaded movie, and hands the game's loader a copy of the file it opened at boot with those transforms added
+  (`dll/src/hud.rs`). Nothing is written to disk, and the base is whatever HUD movie the game loaded.
 - **Color.** The DLL gets your color from NativePaint and serves it to the flames as FXR external values, the
   same way as [AC6-FXR-DLL-POC](https://github.com/lugia19/AC6-FXR-DLL-POC). Without the DLL, everything plays stock.
   
