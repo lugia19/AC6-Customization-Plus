@@ -1,13 +1,16 @@
 //! The player's thruster flames take the color of the THRUSTER row in the Paint screen (Armored Core VI 1.09.1). The
 //! row and its color come from NativePaint (native_paint.dll, row 0: saved with the AC, white until picked).
+//! Also brings back the DEVICE row's brightness setting (device.rs).
 //!
 //! Hooks:
 //! - 0x142b56480 FXR external value read: serves the color to the flames, in thrusters.rs.
 //! - 0x140937cc0 / 0x14092bcd0 the two flame-carrying slot updates: whether a flame is the player's, in
 //!   player_flames.rs.
+//! - Four Paint screen functions, in device.rs.
 //!
 //! Logs to Game\debug-logs\paint_menu.log.
 
+mod device;
 mod native_paint_client;
 mod player_flames;
 mod thrusters;
@@ -50,10 +53,15 @@ pub(crate) type Hook = (usize, [u8; 6], *const (), &'static AtomicUsize);
 
 fn install() -> Result<(), String> {
     let [thruster_slot_update, multi_sfx_slot_update] = player_flames::hooks();
-    let hooks: [Hook; 3] = [
+    let [is_normal_slot, make_panel, build_panel, material_text] = device::hooks();
+    let hooks: [Hook; 7] = [
         thrusters::hook(),
         thruster_slot_update,
         multi_sfx_slot_update,
+        is_normal_slot,
+        make_panel,
+        build_panel,
+        material_text,
     ];
     for &(addr, bytes, _, _) in &hooks {
         let actual = unsafe { std::slice::from_raw_parts(addr as *const u8, bytes.len()) };

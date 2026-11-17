@@ -14,6 +14,10 @@ boosting, quick boosting, assault boosting, all of it.
 The color is stored in the AC's paint data, so it's saved with the AC and carried by designs. Until you pick
 one, it's white. Dark colors work too: the flames darken what's behind them instead of glowing.
 
+It also brings back a setting the game has but hides: how bright the AC's lights are. Confirming the DEVICE row
+now opens the same Color / Material panel as the other rows, and its Material is "Light Source Intensity", ten
+levels, per part like any material. NPC ACs use it; the stock menu just never let you reach it.
+
 ## Known issues
 
 - The Paint screen's pattern thumbnail can stop updating after going in and out of it a few times. That's an me3 bug
@@ -33,6 +37,10 @@ one, it's white. Dark colors work too: the flames darken what's behind them inst
   from the cutscene rather than your AC and plays stock. Yours play two recolored copies of the stock flame, one adding the color and one subtracting what the color lacks
   (that's what makes dark colors work). It decides once and sticks to it, since a flame it already started keeps
   playing even if it switches.
+- **DEVICE brightness.** Nothing new is added: the game's own material menu already lists the ten light intensity
+  materials (90-99) for DEVICE, with their text and live preview, and the value is ordinary paint data. The DEVICE
+  row was just built color-only, with no way into that menu. Four hooks build it like the other color rows
+  (`dll/src/device.rs`).
 - **Color.** The DLL gets your color from NativePaint and serves it to the flames as FXR external values, the
   same way as [AC6-FXR-DLL-POC](https://github.com/lugia19/AC6-FXR-DLL-POC). Without the DLL, everything plays stock.
   
