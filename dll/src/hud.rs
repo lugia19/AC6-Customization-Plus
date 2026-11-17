@@ -1,4 +1,4 @@
-//! The HUD rows in the Paint screen (NativePaint's rows 1 and 2): HUD (a color, and an opacity as its choice) and HUD
+//! The HUD rows in the Paint screen (rows.rs): HUD (a color, and an opacity as its choice) and HUD
 //! WARNING (a color). The stock base color (#DFFCFF), red and fully opaque are the stock HUD.
 //!
 //! The package has a prepared copy of the HUD movie (menu/01_000_fe.gfx, tools/prepare_hud.py), which hud_movie.rs
@@ -16,11 +16,11 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::hud_movie::{self, Look};
-use crate::native_paint_client::{self, ROW_HUD, ROW_HUD_WARNING};
+use crate::rows::{self, ROW_HUD, ROW_HUD_WARNING};
 use crate::{Hook, log, orig};
 
 // The HUD row's choices, in percent. build.py adds as many materials to the regulation.
-const OPACITIES: [u32; 11] = [100, 90, 80, 70, 60, 50, 40, 30, 20, 10, 0];
+const OPACITIES: [u32; 11] = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
 
 const HUD_MOVIE: &str = "01_000_FE";
 
@@ -182,19 +182,19 @@ unsafe fn release_cached_movie(system: usize) {
 
 // ---- the rows -----------------------------------------------------------------------------------------------------
 
-/// Claims the rows; false until NativePaint has them (it may load after us).
-pub(crate) fn claim_rows() -> bool {
+pub(crate) fn claim_rows() {
     let labels = OPACITIES.map(|percent| format!("Opacity {percent}%"));
     let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
-    native_paint_client::claim_row(ROW_HUD, "HUD", Look::STOCK.hud)
-        && native_paint_client::claim_row(ROW_HUD_WARNING, "HUD WARNING", Look::STOCK.warning)
-        && native_paint_client::set_choices(ROW_HUD, &labels, 0)
+    rows::claim(ROW_HUD, "HUD", Look::STOCK.hud);
+    // Fully opaque, the last one, is the default.
+    rows::set_choices(ROW_HUD, &labels, OPACITIES.len() as u32 - 1);
+    rows::claim(ROW_HUD_WARNING, "HUD WARNING", Look::STOCK.warning);
 }
 
 /// What the rows say right now. None while the player's data isn't loaded.
 fn rows_look() -> Option<Look> {
-    let hud = native_paint_client::color(ROW_HUD)?;
-    let warning = native_paint_client::color(ROW_HUD_WARNING)?;
-    let opacity = *OPACITIES.get(native_paint_client::choice(ROW_HUD)? as usize)?;
+    let hud = rows::color(ROW_HUD)?;
+    let warning = rows::color(ROW_HUD_WARNING)?;
+    let opacity = *OPACITIES.get(rows::choice(ROW_HUD)? as usize)?;
     Some(Look { hud, warning, opacity })
 }

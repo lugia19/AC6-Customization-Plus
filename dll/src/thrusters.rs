@@ -1,4 +1,4 @@
-//! Feeds the custom generator flames (fxr/build_fxrs.mjs) the player's thruster color (NativePaint's THRUSTER row)
+//! Feeds the custom generator flames (fxr/build_fxrs.mjs) the player's thruster color (the THRUSTER row, rows.rs)
 //! through FXR external values, red, green, blue each: 900001-900003 what the additive copy of a flame adds,
 //! 900004-900006 what the subtractive copy removes from the background (both copies play together; see set_channels),
 //! 900007-900009 the plain color, for alpha-blended particles (smoke). Served as 1 + the amount (1..2), so 0 keeps
@@ -6,12 +6,12 @@
 //!
 //! Effects read external values through 0x142b56480, effectively `float *get(value_block, float *out, int id)`.
 //!
-//! A polling thread claims the rows (the HUD's too) and caches the color for the hook.
+//! A polling thread caches the row's color for the hook.
 
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::time::Duration;
 
-use crate::native_paint_client::{self, ROW_THRUSTER};
+use crate::rows::{self, ROW_THRUSTER};
 use crate::{Hook, log, orig};
 
 const EXT_FIRST_CHANNEL: i32 = 900001;
@@ -82,28 +82,16 @@ fn set_channels(rgb: u32) {
 }
 
 fn poll_loop() {
-    let mut claimed = false;
     let mut last = None;
     let mut last_choice = None;
     loop {
         std::thread::sleep(POLL_INTERVAL);
-        if !claimed {
-            // This thread also claims the HUD's rows, which need no polling (hud.rs reads them at each sortie).
-            // TEST: a list of flame types; nothing uses the choice yet.
-            claimed = native_paint_client::claim_row(ROW_THRUSTER, "THRUSTER", DEFAULT_COLOR)
-                && native_paint_client::set_choices(ROW_THRUSTER, &["Normal", "Plasma", "Coral"], 0)
-                && crate::hud::claim_rows();
-            if claimed {
-                log("rows claimed: THRUSTER, HUD, HUD WARNING");
-            }
-            continue;
-        }
-        let choice = native_paint_client::choice(ROW_THRUSTER);
+        let choice = rows::choice(ROW_THRUSTER);
         if choice != last_choice {
             last_choice = choice;
             log(&format!("thrusters: flame type {choice:?}"));
         }
-        let Some(rgb) = native_paint_client::color(ROW_THRUSTER) else { continue };
+        let Some(rgb) = rows::color(ROW_THRUSTER) else { continue };
         if last != Some(rgb) {
             last = Some(rgb);
             set_channels(rgb);
@@ -113,6 +101,9 @@ fn poll_loop() {
 }
 
 pub(crate) fn start() {
+    rows::claim(ROW_THRUSTER, "THRUSTER", DEFAULT_COLOR);
+    // TEST: a list of flame types; nothing uses the choice yet.
+    rows::set_choices(ROW_THRUSTER, &["Normal", "Plasma", "Coral"], 0);
     set_channels(DEFAULT_COLOR);
     std::thread::spawn(poll_loop);
 }

@@ -15,7 +15,7 @@ The color is stored in the AC's paint data, so it's saved with the AC and carrie
 one, it's white. Dark colors work too: the flames darken what's behind them instead of glowing.
 
 Below it are two rows for the in-mission HUD:
-- **HUD**: its color, and an opacity (its Material menu, 100% down to 0%).
+- **HUD**: its color, and an opacity (its Material menu, 0% up to 100%).
 - **HUD WARNING**: the color of warnings. Every state color follows it: red becomes this color, and orange,
   yellow, green and the rest keep their distance from it.
 
@@ -33,9 +33,11 @@ levels, per part like any material. NPC ACs use it; the stock menu just never le
 
 ## How it works
 
-- **Paint row.** The row comes from NativePaint (`native_paint.dll` plus its `menu/02_coloring.gfx`, bundled
-  unchanged): a small library for extra color rows in the Paint screen. It keeps the color in a part of the
-  AC's paint data the game never uses (section 7, color slot 0).
+- **Paint rows.** The three rows are extra color slots that the game's own row builder is made to build
+  (`dll/src/rows.rs`), shown by clips added to the Paint movie (`tools/build_gfx.py` patches
+  `menu/02_coloring.gfx`). Each keeps its color, and its choice if it has one, in a part of the AC's paint data
+  the game never uses, which is why a row is one value for the whole AC and not per part. Details:
+  [docs/paint-rows.md](docs/paint-rows.md).
 - **Flames.** Every player generator gets a new thruster color type, whose flames are wrapper effects built by
   `fxr/build_fxrs.mjs`. Enemy ACs use the same generators, so when a wrapper spawns, it asks the DLL whether it's on
   your AC. The DLL knows exactly: every character drives its effects through its own slots, and the DLL tags each
@@ -62,7 +64,7 @@ levels, per part like any material. NPC ACs use it; the stock menu just never le
   colors (the stagger bar's orange and red, reload and overheat, low AP, boss HP green, condition gauge
   purple...): their hue is rotated, and their saturation and brightness scaled, by what takes pure red to the
   warning color.
-- **Color.** The DLL gets your color from NativePaint and serves it to the flames as FXR external values, the
+- **Color.** The DLL reads your color from the THRUSTER row and serves it to the flames as FXR external values, the
   same way as [AC6-FXR-DLL-POC](https://github.com/lugia19/AC6-FXR-DLL-POC). Without the DLL, everything plays stock.
   
   The DLL does all the color math, and the flames only multiply by what it serves. That matters: an FXR can only take
@@ -76,9 +78,8 @@ levels, per part like any material. NPC ACs use it; the stock menu just never le
 python build.py --game "<...>/ARMORED CORE VI FIRES OF RUBICON/Game" --witchy "<...>/WitchyBND.exe"
 ```
 
-Needs Python 3, node/npm, cargo (stable), [WitchyBND](https://github.com/ividyon/WitchyBND) 3.x and a built
-NativePaint (`--native-paint <its package folder>`, by default `../native-paint/package`). It writes `package/`: the
-mod folder, `paint_menu.dll`, `native_paint.dll` and `paint-menu.me3`.
+Needs Python 3, node/npm, cargo (stable) and [WitchyBND](https://github.com/ividyon/WitchyBND) 3.x. It writes
+`package/`: the mod folder, `paint_menu.dll` and `paint-menu.me3`.
 
 WitchyBND 3.0.1 refuses to repack 1.09.1 regulations out of the box: raise the version in its
 `Assets/Paramdex/AC6/Upgrader/version.txt` to `1_09_1_0042L`.

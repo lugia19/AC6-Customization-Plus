@@ -2,9 +2,8 @@
 
     python build.py --game "<...>/ARMORED CORE VI FIRES OF RUBICON/Game" --witchy "<...>/WitchyBND.exe"
 
-Needs node/npm, cargo (stable), WitchyBND 3.x and a built NativePaint (its package/ folder: --native-paint, by default
-the native-paint folder next to this one). Writes package/: the mod folder (regulation, custom flames, the prepared
-HUD movie, NativePaint's Paint menu files), both DLLs and the me3 profile.
+Needs node/npm, cargo (stable) and WitchyBND 3.x. Writes package/: the mod folder (regulation, custom flames, the
+Paint movie with the extra rows, the prepared HUD movie), the DLL and the me3 profile.
 """
 import argparse
 import atexit
@@ -106,11 +105,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--game", required=True, help="the game's Game folder (with regulation.bin and sfx/)")
     parser.add_argument("--witchy", required=True, help="WitchyBND.exe (3.x)")
-    parser.add_argument("--native-paint", default=os.path.join(os.path.dirname(ROOT), "native-paint", "package"),
-                        help="NativePaint's built package folder (native_paint.dll and mod/), in its repo")
     args = parser.parse_args()
     defs = os.path.join(os.path.dirname(args.witchy), "Assets", "Paramdex", "AC6", "Defs")
-    assert os.path.isfile(os.path.join(args.native_paint, "native_paint.dll")), f"no NativePaint in {args.native_paint}"
 
     # The DLL doesn't depend on anything below: build it meanwhile.
     cargo = subprocess.Popen(["cargo", "+stable", "build", "--release"], cwd=os.path.join(ROOT, "dll"))
@@ -189,9 +185,9 @@ def main():
     generators.save()
     print(f"{switched} player generators switched to their custom flames")
 
-    # The rows' choices are listed as materials, which have to exist: NativePaint's row 0 (THRUSTER) has three (TEST;
+    # The extra Paint rows' choices are listed as materials, which have to exist: row 0 (THRUSTER) has three (TEST;
     # dll/src/thrusters.rs), row 1 (HUD) eleven (dll/src/hud.rs OPACITIES).
-    add_materials = os.path.join(os.path.dirname(args.native_paint), "tools", "add_choice_materials.py")
+    add_materials = os.path.join(ROOT, "tools", "add_choice_materials.py")
     for row, choices in [(0, 3), (1, 11)]:
         subprocess.run([sys.executable, add_materials, os.path.join(params, "PlayerMaterialPresetParam.param"),
                         str(row), str(choices)], check=True)
@@ -201,9 +197,12 @@ def main():
     assert cargo.wait() == 0, "cargo build failed"
 
     shutil.rmtree(PACKAGE, ignore_errors=True)
-    # NativePaint's files, unchanged (its DLL, the Paint movie in mod/), then ours.
-    shutil.copytree(args.native_paint, PACKAGE)
     os.makedirs(os.path.join(PACKAGE, "mod", "sfx"))
+    os.makedirs(os.path.join(PACKAGE, "mod", "menu"))
+    # The Paint movie with the extra rows' clips (dll/src/rows.rs).
+    subprocess.run([sys.executable, os.path.join(ROOT, "tools", "build_gfx.py"),
+                    os.path.join(args.game, "menu", "02_coloring.gfx"),
+                    os.path.join(PACKAGE, "mod", "menu", "02_coloring.gfx")], check=True)
     shutil.copy(regulation, os.path.join(PACKAGE, "mod"))
     shutil.copy(effects, os.path.join(PACKAGE, "mod", "sfx"))
     # The HUD movie with the table of its colors, for the HUD rows (dll/src/hud_movie.rs).

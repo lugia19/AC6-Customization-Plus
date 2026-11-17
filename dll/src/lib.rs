@@ -1,12 +1,15 @@
-//! The player's thruster flames take the color of the THRUSTER row in the Paint screen (Armored Core VI 1.09.1). The
-//! row and its color come from NativePaint (native_paint.dll, row 0: saved with the AC, white until picked).
-//! Also brings back the DEVICE row's brightness setting (device.rs) and adds a HUD row (hud.rs, NativePaint's row 1).
+//! More to set in the Paint screen (Armored Core VI 1.09.1): three rows below WEATHERING, for the whole AC, and the
+//! DEVICE row's hidden brightness setting.
+//! - rows.rs: the extra rows themselves (a color each, optionally a choice from a list; saved with the AC).
+//! - thrusters.rs, player_flames.rs: the THRUSTER row's color on the player's thruster flames.
+//! - hud.rs, hud_movie.rs: the HUD and HUD WARNING rows' colors and opacity on the in-mission HUD.
+//! - device.rs: DEVICE's brightness.
 //!
 //! Hooks:
+//! - 14 Paint screen functions, in rows.rs.
 //! - 0x142b56480 FXR external value read: serves the color to the flames, in thrusters.rs.
 //! - 0x140937cc0 / 0x14092bcd0 the two flame-carrying slot updates: whether a flame is the player's, in
 //!   player_flames.rs.
-//! - Four Paint screen functions, in device.rs.
 //! - 0x141609040 menu movie lookup and 0x1415f40b0 the Scaleform file opener: the HUD's look, in hud.rs.
 //!
 //! Logs to Game\debug-logs\paint_menu.log.
@@ -14,8 +17,9 @@
 mod device;
 mod hud;
 mod hud_movie;
-mod native_paint_client;
+mod paint_data;
 mod player_flames;
+mod rows;
 mod thrusters;
 
 use std::fs::File;
@@ -55,20 +59,10 @@ pub(crate) unsafe fn orig<F: Copy>(trampoline: &AtomicUsize) -> F {
 pub(crate) type Hook = (usize, [u8; 6], *const (), &'static AtomicUsize);
 
 fn install() -> Result<(), String> {
-    let [thruster_slot_update, multi_sfx_slot_update] = player_flames::hooks();
-    let [is_normal_slot, make_panel, build_panel, material_text] = device::hooks();
-    let [movie_lookup, open_file] = hud::hooks();
-    let hooks: [Hook; 9] = [
-        thrusters::hook(),
-        thruster_slot_update,
-        multi_sfx_slot_update,
-        is_normal_slot,
-        make_panel,
-        build_panel,
-        material_text,
-        movie_lookup,
-        open_file,
-    ];
+    let mut hooks: Vec<Hook> = vec![thrusters::hook()];
+    hooks.extend(player_flames::hooks());
+    hooks.extend(rows::hooks());
+    hooks.extend(hud::hooks());
     for &(addr, bytes, _, _) in &hooks {
         let actual = unsafe { std::slice::from_raw_parts(addr as *const u8, bytes.len()) };
         // A jmp means another DLL hooked it first; the detours chain fine.
@@ -103,6 +97,7 @@ fn init() {
         Ok(()) => {
             log("hooks installed");
             thrusters::start();
+            hud::claim_rows();
         }
         Err(e) => log(&format!("not hooked: {e}")),
     }
