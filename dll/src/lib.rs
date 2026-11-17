@@ -13,6 +13,7 @@
 
 mod device;
 mod hud;
+mod hud_movie;
 mod native_paint_client;
 mod player_flames;
 mod thrusters;
@@ -102,7 +103,6 @@ fn init() {
         Ok(()) => {
             log("hooks installed");
             thrusters::start();
-            hud::start();
         }
         Err(e) => log(&format!("not hooked: {e}")),
     }

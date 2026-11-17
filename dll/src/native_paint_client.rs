@@ -17,9 +17,10 @@
 
 use std::sync::OnceLock;
 
-// Rows (top to bottom); both are paint-menu's.
+// Rows (top to bottom); all three are paint-menu's.
 pub const ROW_THRUSTER: u32 = 0;
 pub const ROW_HUD: u32 = 1;
+pub const ROW_HUD_WARNING: u32 = 2;
 
 /// How many choices a row can have.
 pub const MAX_CHOICES: usize = 36;

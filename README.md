@@ -14,9 +14,12 @@ boosting, quick boosting, assault boosting, all of it.
 The color is stored in the AC's paint data, so it's saved with the AC and carried by designs. Until you pick
 one, it's white. Dark colors work too: the flames darken what's behind them instead of glowing.
 
-Below it is a HUD row: a color and an opacity (its Material menu, 100% down to 0%) for the in-mission HUD. The
-color tints the whole HUD, warnings included; white at 100% is the stock HUD. It applies from the next sortie (AC
-TEST counts).
+Below it are two rows for the in-mission HUD:
+- **HUD**: its color, and an opacity (its Material menu, 100% down to 0%).
+- **HUD WARNING**: the color of warnings. Every state color follows it: red becomes this color, and orange,
+  yellow, green and the rest keep their distance from it.
+
+The defaults (the stock pale cyan, red, 100%) are the stock HUD. They apply from the next sortie (AC TEST counts).
 
 It also brings back a setting the game has but hides: how bright the AC's lights are. Confirming the DEVICE row
 now opens the same Color / Material panel as the other rows, and its Material is "Light Source Intensity", ten
@@ -45,11 +48,20 @@ levels, per part like any material. NPC ACs use it; the stock menu just never le
   materials (90-99) for DEVICE, with their text and live preview, and the value is ordinary paint data. The DEVICE
   row was just built color-only, with no way into that menu. Four hooks build it like the other color rows
   (`dll/src/device.rs`).
-- **HUD.** The game loads the HUD movie (`menu/01_000_fe.gfx`) once and builds each mission's HUD from it. Its
-  root has 55 named elements (the player gauges, reticle, radar, alerts...), and a color transform on each one
-  tints and fades everything inside it. When a sortie asks for the movie and the HUD row has changed, the DLL drops
-  the loaded movie, and hands the game's loader a copy of the file it opened at boot with those transforms added
-  (`dll/src/hud.rs`). Nothing is written to disk, and the base is whatever HUD movie the game loaded.
+- **HUD.** The game loads the HUD movie (`menu/01_000_fe.gfx`) once and builds each mission's HUD from it. The
+  package ships a prepared copy of it. Every time a sortie asks for the movie, the DLL reads the HUD rows,
+  drops the loaded movie and hands the game's loader a copy of the file it opened at boot, rewritten for them
+  (`dll/src/hud.rs`). Nothing is written to disk and nothing is remembered between sorties.
+
+  The movie holds about 2,400 colors: shape fills and outlines, text colors and color transforms. The build
+  (`tools/prepare_hud.py`) finds them all and appends a table of where they are to the movie, past the length the
+  game reads; it also gives each of the movie's 54 visible top-level elements a neutral color transform. The DLL
+  (`dll/src/hud_movie.rs`) then only runs each color in the table through one rule and writes the opacity into
+  those transforms' alpha. The rule: the movie's colors fall in two groups. Pale and grey ones are the HUD's base
+  color (`#DFFCFF` and its shades): they become the HUD color at the same brightness. Saturated ones are state
+  colors (the stagger bar's orange and red, reload and overheat, low AP, boss HP green, condition gauge
+  purple...): their hue is rotated, and their saturation and brightness scaled, by what takes pure red to the
+  warning color.
 - **Color.** The DLL gets your color from NativePaint and serves it to the flames as FXR external values, the
   same way as [AC6-FXR-DLL-POC](https://github.com/lugia19/AC6-FXR-DLL-POC). Without the DLL, everything plays stock.
   

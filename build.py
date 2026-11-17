@@ -3,8 +3,8 @@
     python build.py --game "<...>/ARMORED CORE VI FIRES OF RUBICON/Game" --witchy "<...>/WitchyBND.exe"
 
 Needs node/npm, cargo (stable), WitchyBND 3.x and a built NativePaint (its package/ folder: --native-paint, by default
-the native-paint folder next to this one). Writes package/: the mod folder (regulation, custom flames, NativePaint's
-Paint menu files), both DLLs and the me3 profile.
+the native-paint folder next to this one). Writes package/: the mod folder (regulation, custom flames, the prepared
+HUD movie, NativePaint's Paint menu files), both DLLs and the me3 profile.
 """
 import argparse
 import atexit
@@ -206,6 +206,10 @@ def main():
     os.makedirs(os.path.join(PACKAGE, "mod", "sfx"))
     shutil.copy(regulation, os.path.join(PACKAGE, "mod"))
     shutil.copy(effects, os.path.join(PACKAGE, "mod", "sfx"))
+    # The HUD movie with the table of its colors, for the HUD rows (dll/src/hud_movie.rs).
+    subprocess.run([sys.executable, os.path.join(ROOT, "tools", "prepare_hud.py"),
+                    os.path.join(args.game, "menu", "01_000_fe.gfx"),
+                    os.path.join(PACKAGE, "mod", "menu", "01_000_fe.gfx")], check=True)
     shutil.copy(os.path.join(ROOT, "dll", "target", "release", "paint_menu.dll"), PACKAGE)
     shutil.copy(os.path.join(ROOT, "paint-menu.me3"), PACKAGE)
     print(f"Built {PACKAGE}")

@@ -6,7 +6,7 @@
 //!
 //! Effects read external values through 0x142b56480, effectively `float *get(value_block, float *out, int id)`.
 //!
-//! A polling thread claims the row and caches the color for the hook.
+//! A polling thread claims the rows (the HUD's too) and caches the color for the hook.
 
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::time::Duration;
@@ -88,11 +88,13 @@ fn poll_loop() {
     loop {
         std::thread::sleep(POLL_INTERVAL);
         if !claimed {
-            claimed = native_paint_client::claim_row(ROW_THRUSTER, "THRUSTER", DEFAULT_COLOR);
+            // This thread also claims the HUD's rows, which need no polling (hud.rs reads them at each sortie).
+            // TEST: a list of flame types; nothing uses the choice yet.
+            claimed = native_paint_client::claim_row(ROW_THRUSTER, "THRUSTER", DEFAULT_COLOR)
+                && native_paint_client::set_choices(ROW_THRUSTER, &["Normal", "Plasma", "Coral"], 0)
+                && crate::hud::claim_rows();
             if claimed {
-                // TEST: a list of flame types; nothing uses the choice yet.
-                let choices = native_paint_client::set_choices(ROW_THRUSTER, &["Normal", "Plasma", "Coral"], 0);
-                log(&format!("thrusters: THRUSTER row claimed (choices: {choices})"));
+                log("rows claimed: THRUSTER, HUD, HUD WARNING");
             }
             continue;
         }
