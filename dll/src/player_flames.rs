@@ -25,7 +25,6 @@
 //! update; the wrapper waits for a nonzero 900010 (up to 0.3 s, then plays stock). Flames spawned outside the slots
 //! aren't tagged and play stock: one pair in the arena intro cutscene (9412021).
 
-
 const EXT_PLAYERS_FLAME: i32 = 900010;
 const SOMEONE_ELSES: f32 = 1.0;
 const PLAYERS: f32 = 2.0;
@@ -62,19 +61,15 @@ type SetValueFn = unsafe extern "system" fn(usize, usize, i32, f32);
 
 /// Points the slot classes' update entries at ours.
 pub(crate) fn install() -> Result<(), String> {
-    const PAGE_READWRITE: u32 = 4;
     for (entry, game_fn, _) in UPDATE_ENTRIES {
         if unsafe { *(entry as *const usize) } != game_fn {
             return Err(format!("vtable entry at {entry:#x} isn't the slot update (not 1.09.1?)"));
         }
     }
     for (entry, _, ours) in UPDATE_ENTRIES {
-        let mut old = 0;
-        if unsafe { crate::VirtualProtect(entry as *mut u8, 8, PAGE_READWRITE, &mut old) } == 0 {
+        if !unsafe { crate::write_protected(entry, ours as usize) } {
             return Err(format!("can't write the vtable entry at {entry:#x}"));
         }
-        unsafe { *(entry as *mut usize) = ours as usize };
-        unsafe { crate::VirtualProtect(entry as *mut u8, 8, old, &mut old) };
     }
     Ok(())
 }

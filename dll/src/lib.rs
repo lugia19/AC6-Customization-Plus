@@ -1,12 +1,13 @@
-//! More to set in the Paint screen (Armored Core VI 1.09.1): three rows below WEATHERING, for the whole AC, and the
-//! DEVICE row's hidden brightness setting.
-//! - rows.rs: the extra rows themselves (a color each, optionally a choice from a list; saved with the AC).
-//! - thrusters.rs, player_flames.rs: the THRUSTER row's color on the player's thruster flames.
-//! - hud.rs, hud_movie.rs: the HUD and HUD WARNING rows' colors and opacity on the in-mission HUD.
+//! More to set in the Paint screen (Armored Core VI 1.09.1): rows below WEATHERING, for the whole AC, and the DEVICE
+//! row's hidden brightness setting.
+//! - rows.rs: the extra rows themselves (a color, optionally a choice and a second color; saved with the AC).
+//! - panel.rs: the panels of the rows with choices and of DEVICE; ui.rs: the game's menu plumbing they use.
+//! - thrusters.rs, player_flames.rs: the THRUSTER row on the player's thruster flames.
+//! - hud.rs, hud_movie.rs: the HUD row (color, opacity, warning color) on the in-mission HUD.
 //! - device.rs: DEVICE's brightness.
 //!
 //! Hooks:
-//! - 14 Paint screen functions, in rows.rs.
+//! - 9 Paint list functions, in rows.rs; the panels' setup, in panel.rs.
 //! - 0x142b56480 FXR external value read: serves the color to the flames, in thrusters.rs.
 //! - 0x141609040 menu movie lookup and 0x1415f40b0 the Scaleform file opener: the HUD's look, in hud.rs.
 //! Plus the two flame-carrying slot updates, replaced in their classes' vtables: whether a flame is the player's, in
@@ -17,11 +18,13 @@
 mod device;
 mod hud;
 mod hud_movie;
+mod memlog; // TEMPORARY
 mod paint_data;
 mod player_flames;
 mod panel;
 mod rows;
 mod thrusters;
+mod ui;
 
 use std::fs::File;
 use std::io::Write;
@@ -31,7 +34,7 @@ use std::sync::{Mutex, OnceLock};
 use retour::RawDetour;
 
 static LOG: OnceLock<Mutex<File>> = OnceLock::new();
-// Each hook's address and its first bytes once hooked (the jump to our detour), for rehook().
+// Each hook's address and its first bytes once hooked (the jump to our detour), for keep_hooks().
 static HOOKED: OnceLock<Vec<(usize, [u8; 6])>> = OnceLock::new();
 
 pub(crate) fn log(msg: &str) {
@@ -90,21 +93,40 @@ fn install() -> Result<(), String> {
     player_flames::install()
 }
 
-/// Puts back any hook whose bytes changed: the game's Arxan protection restores code it guards to its original bytes
-/// at irregular times (seen on two functions, minutes to over an hour into a session), which silently removes a hook.
-pub(crate) fn rehook() {
+/// Writes `value` at `address` in the game's image (code or a vtable), lifting the page's protection for it.
+pub(crate) unsafe fn write_protected<T: Copy>(address: usize, value: T) -> bool {
     const PAGE_EXECUTE_READWRITE: u32 = 0x40;
-    for &(addr, hooked) in HOOKED.get().into_iter().flatten() {
-        if unsafe { *(addr as *const [u8; 6]) } == hooked {
-            continue;
-        }
-        let mut old = 0;
-        if unsafe { VirtualProtect(addr as *mut u8, hooked.len(), PAGE_EXECUTE_READWRITE, &mut old) } != 0 {
-            unsafe { *(addr as *mut [u8; 6]) = hooked };
-            unsafe { VirtualProtect(addr as *mut u8, hooked.len(), old, &mut old) };
-        }
-        log(&format!("the hook at {addr:#x} was removed: put back"));
+    let mut old = 0;
+    if unsafe { VirtualProtect(address as *mut u8, size_of::<T>(), PAGE_EXECUTE_READWRITE, &mut old) } == 0 {
+        return false;
     }
+    unsafe {
+        (address as *mut T).write_unaligned(value);
+        VirtualProtect(address as *mut u8, size_of::<T>(), old, &mut old);
+    }
+    true
+}
+
+/// Without me3's disable_arxan, the game's Arxan protection restores code it guards to its original bytes at
+/// irregular times (seen on two functions, minutes to over an hour into a session), silently removing a hook. This
+/// puts back, 5 times a second, any hook whose bytes changed.
+fn keep_hooks() {
+    std::thread::spawn(|| {
+        let mut failed = std::collections::HashSet::new();
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            for &(addr, hooked) in HOOKED.get().into_iter().flatten() {
+                if unsafe { *(addr as *const [u8; 6]) } == hooked {
+                    continue;
+                }
+                if unsafe { write_protected(addr, hooked) } {
+                    log(&format!("the hook at {addr:#x} was removed: put back"));
+                } else if failed.insert(addr) {
+                    log(&format!("the hook at {addr:#x} was removed and can't be put back"));
+                }
+            }
+        }
+    });
 }
 
 fn init() {
@@ -119,8 +141,10 @@ fn init() {
     match install() {
         Ok(()) => {
             log("hooks installed");
+            keep_hooks();
             thrusters::start();
             hud::claim_rows();
+            memlog::start(); // TEMPORARY
         }
         Err(e) => log(&format!("not hooked: {e}")),
     }

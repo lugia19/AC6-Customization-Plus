@@ -1,8 +1,8 @@
 # The extra Paint rows
 
-How `dll/src/rows.rs` and `tools/build_gfx.py` add rows to the Paint screen. Armored Core VI 1.09.1; addresses are
-for that exe. (This part was a separate library, NativePaint, until the HUD rows moved into this mod and it had no
-other user.)
+How `dll/src/rows.rs`, `dll/src/panel.rs` and `tools/build_gfx.py` add rows to the Paint screen, and give them (and
+DEVICE) panels. Armored Core VI 1.09.1; addresses are for that exe. (The row part was a separate library,
+NativePaint, until the HUD rows moved into this mod and it had no other user.)
 
 ## The Paint list
 
@@ -66,26 +66,49 @@ Rows with slots 9, 10, 11 (not 0-8: those are the kinds above), built by the gam
   message file is involved. A label holds the text's address, not a copy (the game's point into its message data),
   so the DLL keeps every text allocated forever; a freed text shows as three placeholder blocks.
 - **Editing.** `0x140f40d10` returns the row's own slot for its kind.
-- **Panel.** The switch in `0x140f43610` has no case for an extra row's kind, so for a row with choices the hook
-  does what the color slots' cases do, with the row's slot: copy the list's panel argument (`0x140c92e20(temporary,
-  list + 0x78)`), call the panel builder (`0x140f49590(argument, list + 8, slot)`), store the panel in the output
-  and add a reference to it (`0x142923570(panel + 8)`). The builder destroys the temporary (seen at runtime: its
-  vtable is the base class's, `0x1438df5a0`, when the builder returns).
-- **Choices.** A row's choices are materials `build.py` adds to `PlayerMaterialPresetParam`: up to 36 consecutive
-  rows (as many as the stock menu lists) from 200 for row 0, 300 for row 1, 400 for row 2 (above the stock
-  materials and apart from each other, since the menu lists consecutive IDs). The material icons show the ID in a
-  right-aligned text field; the one on the Color / Material panel's icon (182) is 500 twips wide and cuts a third
-  digit off, so `tools/build_gfx.py` makes it as wide as the others (800). `0x14045da60` returns that
-  first ID for the row's slot, so the menu lists exactly those; both text functions return the choice's label for
-  a material in a row's range. The paint data's material reader and writer (`0x14045a980(paint, sections, slot)`,
-  under the edit context's `0x140e0cbf0`, and `0x14045b070(paint, sections, slot, material)`) use the row's
-  storage, like the colors.
-  `tools/add_choice_materials.py` adds the rows to the regulation.
+- **Panel.** The switch in `0x140f43610` has no case for an extra row's kind; for a row with choices the hook
+  returns a panel `dll/src/panel.rs` builds (below), with a reference added for the list as the cases do.
 - **Color.** Under the edit context's get and set (`0x140e0c960`, called every frame per swatch, and `0x140e0d030`),
   which turn the selected part category into its sections, are the paint data's own color reader and writer:
   `0x14045a7f0(paint, out, sections, slot)` and `0x14045afc0(paint, sections, slot, color)`. Those two are hooked:
   for an extra slot they use the row's storage instead of the given sections, whichever category is selected. An
   extra slot never goes through as is (sections only have six colors, a seventh would land in the pattern bytes).
+  The reader is what the row's swatch in the list uses; the panel reads and writes the row's storage itself.
+
+## The panels
+
+A row's panel (Color / Material for MAIN..OTHER) is a list window: a description holding a header label and, per
+entry, an on-confirm std::function (returns the job that opens what comes next) and a refresh std::function (fills
+the entry's clip `Item_N_0` every frame, item + 0x1b8). The game's builder `0x140f49590` makes the description and
+constructs the panel object on a panel clip (`0x140f47160(panel, clip handle, description, owner)`, 0x1da8 bytes).
+`panel.rs` does the same with its own entries:
+
+| Entry | Refresh | On confirm |
+|---|---|---|
+| Color | the swatch (`Color/Tile`, else `Color` itself, as the game's Color entry does; panel items have no Tile) and the RGB text; hides `Camouflage` (the pattern overlay) | the game's color picker `0x140f37450(screen, out, a3 + 0x10, title, color, on-color)` with our title and callback |
+| A choice (Flame type, Opacity) | the choice's name in `Value_0`; the material icon hidden | an option list (the game's `01_070_CommandList`, as the pattern's Size does) |
+| Second color (Accent color, Warning color) | as Color | as Color |
+
+- **Screens.** The panel state (`list`) holds two: `list[0]` is the Paint list's (its movie clips, MainContent at
+  + 0x1da0; no edit context), and the owner (`list + 8`) gives the one the entries use through its virtual 2 (the
+  edit context at + 0x440: category + 0x28, working paint block + 0x40). The game's own entries get that same
+  object.
+- **a3.** An on-confirm's third argument is the panel window; + 0x10 is its child window stack, where the picker or
+  list is pushed (as the game's entries pass it).
+- **Option lists.** A description per open (title, one item per option, the current one selected), then the jobs as
+  the Size list builds them: a restore job (`0x140f3c2b0`, a snapshot of the paint block), the list window
+  (`0x140f382e0(desc, out, screen + 0x3d8)`), a branch restoring the snapshot on cancel (`0x1416c4660`), all inside
+  the "sub-window open" wrapper (`0x140f3b490`). Options must be appended with `0x140c847e0`, the list-item add the
+  game's lists use: appended as panel entries (`0x140d3c600`), confirming one leaves the list open. An option's
+  on-confirm returns a job storing the choice (`0x140a63060(out, fn, {2, 0})`); with desc + 0xba0 set it also runs
+  on every cursor move, which is the live preview.
+- **Writes** go into the edit context's working paint block, so the picker and the list preview live and cancel
+  puts the block back.
+- **Clip.** The rows' panel is its own clip, `Color_Material_Color_Select`, a copy of the Color / Material panel
+  with a color item third (`tools/build_gfx.py`), placed visible like the stock panels (the MainContent timeline
+  replays its placements when a sub-window closes) and hidden at screen setup (`0x140f3fd90`, where the game hides
+  its own three).
+- Clip handles (0x60 bytes) point to themselves: they are built in place and never moved (a moved one crashed).
 
 ## Storage
 
@@ -103,8 +126,8 @@ The paint data is 14 sections of 0x44 bytes, saved and carried by designs as one
 Sections: 0 head, 1 core, 2 R arm, 3 L arm, 4 legs, 5 R weapon, 8 L weapon, 11 the leftover Extension unit, 12 R
 back, 13 L back. The part categories (`0x14045d960`) never write 6, 7, 9 and 10; 10's header gets written by something
 else and Sundance's Extension parts mod uses it. Rows 0, 1, 2 use sections 7, 6, 9 (row 0 on 7 because version
-0.1.0 stored its thruster color there): the color in color 0, the choice in material 0. The rest of those sections
-is unused.
+0.1.0 stored its thruster color there): the color in color 0, the second color in color 1, the choice in material
+0. The rest of those sections is unused.
 
 Why a row is AC-wide and can't be per part: a stock row's color lives in the selected part's own sections (slot k of
 head, core...), which is what makes it per part. An extra row has no slot in those sections (they only have six
@@ -146,16 +169,26 @@ rebuilds the screen from the new file.
 
 ## DEVICE's brightness
 
-The same three hooks that serve the extra rows also bring back the DEVICE row's hidden setting
-(`dll/src/device.rs`): is-normal-slot answers true for DEVICE, so its row is built like MAIN..OTHER; the panel
-switch gets the same hand-made panel as an extra row with choices, for slot 5; and both material text functions
-label materials 90-99 "Brightness 10%" to "Brightness 450%": the material row's glow (a float at +8 of its
-`PlayerMaterialPresetParam` row, 0.1 to 4.5, 1.0 for the default material 92) as a percentage. The game's own text
-for them is "Light Source Intensity" and that float, in the menu only.
+Two of the row hooks also bring back the DEVICE row's hidden setting (`dll/src/device.rs`): is-normal-slot answers
+true for DEVICE, so its row is built like MAIN..OTHER, and the panel switch gets a panel from `panel.rs` for slot
+5: the game's own Color entry (`0x140f3b1c0(screen, desc, 5, label)`) and a Brightness entry doing what the game's
+Material entry would for slot 5. Its confirm opens the stock material picker, `0x140f38320(screen, out, a3 + 0x10,
+5)`, which lists materials 90-99 (`0x14045da60` gives 90 for DEVICE) and labels them itself ("Light Source
+Intensity" and the material row's glow, a float at +8 of its `PlayerMaterialPresetParam` row, 0.1 to 4.5, 1.0 for
+the default 92). Its refresh is the game's Material entry refresh (`0x140f47e80`) redone for slot 5: the icon
+(`0x140f44fd0`, `0x140f45260(icon, material)`) and the menu's text (`0x140f35c40`).
+
+The panel is built here rather than by the game's builder because that one adds Paint Pattern's Apply entry on an
+AC with a pattern. It sits on the stock Color / Material clip, so nothing may be hidden on it: the stock entries
+never show a hidden child again (a hidden material icon stayed hidden in every part's panel).
 
 ## Notes
 
 Dropped or parked:
+- Choices as materials: a row's choices were materials added to the regulation (from ID 200 per row), listed by the
+  stock material menu through hooks on the first material, the material reader and writer and both material text
+  functions, and the panel came from the game's builder for the row's made-up slot. Replaced by the panel's own
+  entries, which need none of that.
 - Redirecting a color-only row's confirm to the panel (instead of building a normal row) crashes: the color picker
   opened from the panel runs `0x140f40a50`, which expects what a normal row captures.
 - Reusing DEVICE's materials (90-99) as choices, with the first material set to 100 - N for N choices: worked, but a

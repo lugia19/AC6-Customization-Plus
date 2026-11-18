@@ -1,6 +1,6 @@
 """Builds the Paint movie (02_coloring.gfx) from the stock one: three extra color rows (Item_9_0..Item_11_0) below
 
-WEATHERING in the Paint list, and a popup for them. Everything else stays byte-identical.
+WEATHERING in the Paint list, and a panel for them. Everything else stays byte-identical.
 
 usage: build_gfx.py stock.gfx out.gfx
 
@@ -11,10 +11,10 @@ tall as the rows the game shows (clips past the row count are hidden). The copie
 ActionScript class, whose frame scripts stop its animations (without it they loop). The first one also has the
 panel's header, a text field copied from the rows' label field (228) with its own text.
 
-The popup: the game looks its panels up by name in the content sprite (269) and fills a panel's Item_<n>_0 clips
-with a popup's entries, in order. The Color / Material panel (192) has a color item, a material item and the Paint
-Pattern item (fixed text "Apply"). The extra rows' popup is a copy of it with a second color item in third place,
-under its own name (dll/src/rows.rs hands it to the popup builder).
+The rows panel: the game looks its panels up by name in the content sprite (269) and fills a panel's Item_<n>_0 clips
+with a panel's entries, in order. The Color / Material panel (192) has a color item, a material item and the Paint
+Pattern item (fixed text "Apply"). The extra rows' panel is a copy of it with a second color item in third place,
+under its own name (dll/src/panel.rs builds the panel on it).
 """
 import struct
 import sys
@@ -35,13 +35,13 @@ HEADER = "ENTIRE AC"
 NEW_ROW_DEPTHS = (7, 8, 9)  # free depths in the list sprite
 FIRST_NEW_ROW = 9  # Item_<n>_0
 CONTENT_SPRITE = 269
-POPUP_SPRITE = 192
-POPUP_COLOR_ITEM = 191
-POPUP_PATTERN_ITEM = 178
-NEW_POPUP_ID = 402
-NEW_POPUP_NAME = "Color_Material_Color_Select"
-POPUP_DEPTH = 118  # the Color / Material panel's in the content sprite
-NEW_POPUP_DEPTH = 119  # free, right above it
+STOCK_PANEL_SPRITE = 192
+PANEL_COLOR_ITEM = 191
+PANEL_PATTERN_ITEM = 178
+ROWS_PANEL_ID = 402
+ROWS_PANEL_NAME = "Color_Material_Color_Select"
+STOCK_PANEL_DEPTH = 118  # the Color / Material panel's in the content sprite
+ROWS_PANEL_DEPTH = 119  # free, right above it
 
 # Layout, in twips (20 per pixel at 1080p), list sprite coordinates.
 PANEL_X = (1920, 8820)
@@ -244,44 +244,44 @@ def row_sprite(stock_row, new_id, row_y, slice_top, texture, header):
     return tag(DEFINE_SPRITE, struct.pack("<H", new_id) + frame_count + body)
 
 
-def popup_sprite(stock_popup):
+def rows_panel_sprite(stock_panel):
     """The Color / Material panel sprite (its tag's content) with the color item in place of the Paint Pattern one."""
     body, swapped = b"", 0
-    for tag_type, header, _, raw in tags(stock_popup, 4, len(stock_popup)):
+    for tag_type, header, _, raw in tags(stock_panel, 4, len(stock_panel)):
         place = raw[header:]
-        if tag_type == PLACE_OBJECT2 and place[0] & 0x02 and struct.unpack_from("<H", place, 3)[0] == POPUP_PATTERN_ITEM:
-            raw = tag(PLACE_OBJECT2, place[:3] + struct.pack("<H", POPUP_COLOR_ITEM) + place[5:])
+        if tag_type == PLACE_OBJECT2 and place[0] & 0x02 and struct.unpack_from("<H", place, 3)[0] == PANEL_PATTERN_ITEM:
+            raw = tag(PLACE_OBJECT2, place[:3] + struct.pack("<H", PANEL_COLOR_ITEM) + place[5:])
             swapped += 1
         body += raw
-    assert swapped == 1, "popup sprite: the Paint Pattern item isn't placed exactly once"
-    return tag(DEFINE_SPRITE, struct.pack("<H", NEW_POPUP_ID) + stock_popup[2:4] + body)
+    assert swapped == 1, "rows panel sprite: the Paint Pattern item isn't placed exactly once"
+    return tag(DEFINE_SPRITE, struct.pack("<H", ROWS_PANEL_ID) + stock_panel[2:4] + body)
 
 
-def add_popup(d):
-    """Adds the extra rows' popup panel to the content sprite. Returns the bytes added."""
-    popup_pos, popup_header, popup_length = find_sprite(d, POPUP_SPRITE)
-    sprite = popup_sprite(bytes(d[popup_pos + popup_header:popup_pos + popup_header + popup_length]))
+def add_rows_panel(d):
+    """Adds the extra rows' panel to the content sprite. Returns the bytes added."""
+    stock_pos, stock_header, stock_length = find_sprite(d, STOCK_PANEL_SPRITE)
+    sprite = rows_panel_sprite(bytes(d[stock_pos + stock_header:stock_pos + stock_header + stock_length]))
     content_pos, content_header, content_length = find_sprite(d, CONTENT_SPRITE)
     assert content_header == 6, "content sprite must use the long length form"
     content_tags = list(tags(d, content_pos + content_header + 4, content_pos + content_header + content_length))
     assert all(t in (PLACE_OBJECT2, SHOW_FRAME, END) for t, _, _, _ in content_tags), "content sprite: unexpected tag"
     used_depths = {struct.unpack_from("<H", raw, h + 1)[0] for t, h, _, raw in content_tags if t == PLACE_OBJECT2}
-    assert NEW_POPUP_DEPTH not in used_depths, "the popup's depth is in use in the content sprite"
+    assert ROWS_PANEL_DEPTH not in used_depths, "the rows panel's depth is in use in the content sprite"
     # The content sprite places its panels in frame 1 and fades them over the next frames (a color transform per
     # panel per frame): ours gets the Color / Material panel's tags again, at its own depth. Placed visible like the
     # others: the timeline replays (e.g. coming back from the color picker), and a placement that says "invisible"
-    # would hide the panel again each time. dll/src/rows.rs hides it at screen setup, as the game does its own.
+    # would hide the panel again each time. dll/src/panel.rs hides it at screen setup, as the game does its own.
     added = 0
     for tag_type, header, pos, raw in reversed(content_tags):  # back to front: earlier offsets stay valid
-        if tag_type != PLACE_OBJECT2 or struct.unpack_from("<H", raw, header + 1)[0] != POPUP_DEPTH:
+        if tag_type != PLACE_OBJECT2 or struct.unpack_from("<H", raw, header + 1)[0] != STOCK_PANEL_DEPTH:
             continue
         place = bytearray(raw[header:])
-        struct.pack_into("<H", place, 1, NEW_POPUP_DEPTH)
+        struct.pack_into("<H", place, 1, ROWS_PANEL_DEPTH)
         if place[0] & 0x02:  # the placement itself: our sprite, our name
             assert place[0] == 0x26, "content sprite: the Color / Material panel's placement has unexpected fields"
-            struct.pack_into("<H", place, 3, NEW_POPUP_ID)
+            struct.pack_into("<H", place, 3, ROWS_PANEL_ID)
             name_start = 5 + read_matrix(place, 5)[0]
-            place = place[:name_start] + NEW_POPUP_NAME.encode() + b"\0"
+            place = place[:name_start] + ROWS_PANEL_NAME.encode() + b"\0"
         new = tag(PLACE_OBJECT2, bytes(place))
         d[pos + len(raw):pos + len(raw)] = new
         added += len(new)
@@ -296,7 +296,7 @@ def main():
     d = bytearray(open(inp, "rb").read())
     extend_text_field_left(d, PANEL_MATERIAL_NUMBER_TEXT, PANEL_MATERIAL_NUMBER_EXTRA_WIDTH)
     used = {struct.unpack_from("<H", raw, h)[0] for _, h, _, raw in tags(d, first_tag_pos(d), len(d)) if len(raw) - h >= 2}
-    assert not used & {*NEW_SPRITE_IDS, HEADER_TEXT_ID, NEW_POPUP_ID}, "a new character's ID may be in use"
+    assert not used & {*NEW_SPRITE_IDS, HEADER_TEXT_ID, ROWS_PANEL_ID}, "a new character's ID may be in use"
     _, label_header, label_raw = find_tag(d, DEFINE_EDIT_TEXT, ROW_LABEL_TEXT)
     label_text = label_raw[label_header:]
     row_pos, row_header, row_length = find_sprite(d, ROW_SPRITE)
@@ -334,10 +334,10 @@ def main():
     d[first_frame:first_frame] = places
     struct.pack_into("<I", d, list_pos + 2, list_length + len(places))
     d[list_pos:list_pos] = sprites
-    added = len(sprites) + len(places) + len(entries) + add_popup(d)
+    added = len(sprites) + len(places) + len(entries) + add_rows_panel(d)
     struct.pack_into("<I", d, 4, struct.unpack_from("<I", d, 4)[0] + added)
     open(out, "wb").write(d)
-    print(f"{len(NEW_SPRITE_IDS)} rows and their popup added, size {added:+d} bytes")
+    print(f"{len(NEW_SPRITE_IDS)} rows and their panel added, size {added:+d} bytes")
 
 
 if __name__ == "__main__":

@@ -19,7 +19,7 @@ use crate::hud_movie::{self, Look};
 use crate::rows::{self, ROW_HUD};
 use crate::{Hook, log, orig};
 
-// The HUD row's choices, in percent. build.py adds as many materials to the regulation.
+// The HUD row's choices, in percent.
 const OPACITIES: [u32; 11] = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
 
 const HUD_MOVIE: &str = "01_000_FE";

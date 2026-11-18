@@ -8,7 +8,7 @@
 //!
 //! Effects read external values through 0x142b56480, effectively `float *get(value_block, float *out, int id)`.
 //!
-//! A polling thread caches the row's color and flame type for the hook (and keeps the DLL's hooks in place).
+//! A polling thread caches the row's color and flame type for the hook.
 
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::time::Duration;
@@ -19,7 +19,7 @@ use crate::{Hook, log, orig};
 const EXT_FIRST_CHANNEL: i32 = 900001;
 const CHANNEL_COUNT: usize = 9;
 const EXT_FLAME_TYPE: i32 = 900011;
-// The row's choices; the index is what 900011 serves. build.py adds as many materials to the regulation.
+// The row's choices; the index is what 900011 serves.
 const FLAME_TYPES: [&str; 5] = ["Generator's own", "Combustion", "Current", "Coral", "ALLMIND"];
 const POLL_INTERVAL: Duration = Duration::from_millis(200);
 
@@ -104,7 +104,6 @@ fn poll_loop() {
     let mut last_choice = None;
     loop {
         std::thread::sleep(POLL_INTERVAL);
-        crate::rehook();
         if let Some(choice) = rows::choice(ROW_THRUSTER).filter(|choice| last_choice != Some(*choice)) {
             last_choice = Some(choice);
             FLAME_TYPE.store((choice as f32).to_bits(), Ordering::Relaxed);

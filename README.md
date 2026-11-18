@@ -12,11 +12,11 @@ More to customize in Armored Core VI's Paint screen (1.09.1), saved with each AC
 1. Grab the zip from [Releases](../../releases) (or build it, below), extract it anywhere, and launch
    `customization-plus.me3` with [me3](https://github.com/garyttierney/me3).
    It uses its own save, `CustomizationPlus.sl2`, which me3 copies from your real save on first launch.
-2. In the garage, Paint: below WEATHERING there's a new panel, ENTIRE AC, with three rows. Each is one value for
-   the whole AC, whichever part tab is open.
+2. In the garage, Paint: below WEATHERING there's a new panel, ENTIRE AC, with two rows. Each is one setting for
+   the whole AC, whichever part tab is open. Confirming a row opens its panel, like MAIN's Color / Material.
 
-**THRUSTER** is a color, and a flame type as its Material. Until you pick a color, it's white. Dark colors work
-too: the flames darken what's behind them instead of glowing. The types:
+**THRUSTER**: a color, a flame type and an accent color. Until you pick a color, it's white. Dark colors work
+too: the flames darken what's behind them instead of glowing. The accent color isn't used yet. The types:
 - **Generator's own** (the default): the flames of the generator you have equipped.
 - **Combustion**, **Current**, **Coral**: the game's three kinds of flame. They differ in shape and detail, not only
   in color: Current has its own flame model, Coral adds sparkles and haze.
@@ -25,16 +25,21 @@ too: the flames darken what's behind them instead of glowing. The types:
 
 The exhaust fumes stay as the game has them.
 
-The other two are for the in-mission HUD:
-- **HUD**: its color, and an opacity (its Material menu, 0% up to 100%).
-- **HUD WARNING**: the color of warnings. Every state color follows it: red becomes this color, and orange,
+**HUD** is for the in-mission HUD:
+- **Color**: the HUD's color.
+- **Opacity**: 0% up to 100%.
+- **Warning color**: the color of warnings. Every state color follows it: red becomes this color, and orange,
   yellow, green and the rest keep their distance from it.
 
-The defaults (the stock pale cyan, red, 100%) are the stock HUD. They apply from the next sortie (AC TEST counts).
+The defaults (the stock pale cyan, 100%, red) are the stock HUD. They apply from the next sortie (AC TEST counts).
 
-**DEVICE** gets its hidden setting back: how bright the AC's lights are. Confirming the DEVICE row now opens the
-same Color / Material panel as the other rows, and its Material is the brightness, ten levels from 10% to 450%,
-per part like any material. NPC ACs use it; the stock menu just never let you reach it.
+**DEVICE** gets its hidden setting back: how bright the AC's lights are. Confirming the DEVICE row now opens a
+panel with its color and a Brightness entry, which opens the game's own material picker with the ten light
+intensities (0.1 to 4.5), per part like any material. NPC ACs use them; the stock menu just never let you reach
+them.
+
+Coming from a build with the HUD WARNING row: the warning color is now in the HUD row's panel, and a warning color
+picked before isn't carried over.
 
 Everything is stored in the AC's paint data, so it's saved with the AC and carried by designs.
 
@@ -49,11 +54,12 @@ Coming from 0.1.0 (AC6-Thruster-Customization)? The save file has a new name: re
 
 ## How it works
 
-- **Paint rows.** The three rows are extra color slots that the game's own row builder is made to build
+- **Paint rows.** The rows are extra color slots that the game's own row builder is made to build
   (`dll/src/rows.rs`), shown by clips added to the Paint movie (`tools/build_gfx.py` patches
-  `menu/02_coloring.gfx`). Each keeps its color, and its choice if it has one, in a part of the AC's paint data
-  the game never uses, which is why a row is one value for the whole AC and not per part. Details:
-  [docs/paint-rows.md](docs/paint-rows.md).
+  `menu/02_coloring.gfx`). Their panels are built by the DLL from the game's own menu pieces (`dll/src/panel.rs`):
+  the game's color picker, and option lists like the pattern's Size. A row keeps its colors and choice in a part of
+  the AC's paint data the game never uses, which is why a row is one value for the whole AC and not per part.
+  Details: [docs/paint-rows.md](docs/paint-rows.md).
 - **Flames.** Every player generator gets a new thruster color type, whose flames are wrapper effects built by
   `fxr/build_fxrs.mjs`. Enemy ACs use the same generators, so when a wrapper spawns, it asks the DLL whether it's on
   your AC. The DLL knows exactly: every character drives its effects through its own slots, and the DLL tags each
@@ -69,8 +75,8 @@ Coming from 0.1.0 (AC6-Thruster-Customization)? The save file has a new name: re
   with the flames taken out.
 - **DEVICE brightness.** Nothing new is added: the game's own material menu already lists the ten light intensity
   materials (90-99) for DEVICE, with their text and live preview, and the value is ordinary paint data. The DEVICE
-  row was just built color-only, with no way into that menu. Four hooks build it like the other color rows
-  (`dll/src/device.rs`).
+  row was just built color-only, with no way into that menu. The row hooks build it like the other color rows,
+  and its panel leads to that menu (`dll/src/device.rs`, `dll/src/panel.rs`).
 - **HUD.** The game loads the HUD movie (`menu/01_000_fe.gfx`) once and builds each mission's HUD from it. The
   package ships a prepared copy of it. Every time a sortie asks for the movie, the DLL reads the HUD rows,
   drops the loaded movie and hands the game's loader a copy of the file it opened at boot, rewritten for them
