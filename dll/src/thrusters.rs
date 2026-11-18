@@ -3,6 +3,8 @@
 //! 900004-900006 what the subtractive copy removes from the background (both copies play together; see set_channels),
 //! 900007-900009 the plain color, for alpha-blended particles (smoke). Served as 1 + the amount (1..2), so 0 keeps
 //! meaning "no DLL" (the flames' wrappers then play stock). White until the player picks a color.
+//! 900011 is the row's choice, the flame type: 0 the generator's own, 1 combustion, 2 current, 3 Coral, 4-6 the same three as fans of five flames (how the boss ALLMIND's thrusters are built); a flame's wrapper
+//! then plays its effect row's flame for that type.
 //!
 //! Effects read external values through 0x142b56480, effectively `float *get(value_block, float *out, int id)`.
 //!
@@ -16,6 +18,17 @@ use crate::{Hook, log, orig};
 
 const EXT_FIRST_CHANNEL: i32 = 900001;
 const CHANNEL_COUNT: usize = 9;
+const EXT_FLAME_TYPE: i32 = 900011;
+// The row's choices; the index is what 900011 serves. build.py adds as many materials to the regulation.
+const FLAME_TYPES: [&str; 7] = [
+    "Generator's own",
+    "Combustion",
+    "Current",
+    "Coral",
+    "Combustion (ALLMIND fanout)",
+    "Current (ALLMIND fanout)",
+    "Coral (ALLMIND fanout)",
+];
 const POLL_INTERVAL: Duration = Duration::from_millis(200);
 
 const DEFAULT_COLOR: u32 = 0xFFFFFF;
@@ -23,6 +36,8 @@ const DEFAULT_COLOR: u32 = 0xFFFFFF;
 static ORIG_GET_EXT_VALUE: AtomicUsize = AtomicUsize::new(0);
 // Served values for 900001-900009 (add, remove, plain: red, green, blue each), as f32 bits (see set_channels).
 static CHANNELS: [AtomicU32; CHANNEL_COUNT] = [const { AtomicU32::new(0) }; CHANNEL_COUNT];
+// Served value for 900011, as f32 bits.
+static FLAME_TYPE: AtomicU32 = AtomicU32::new(0);
 
 
 type GetExtValueFn = unsafe extern "system" fn(*mut u8, *mut u32, i32) -> *mut u32;
@@ -36,12 +51,17 @@ pub(crate) fn hook() -> Hook {
 /// Called for every external value read of every effect. Our IDs don't need the game's lookup at all (nothing else
 /// provides them), so it's skipped for them.
 unsafe extern "system" fn get_ext_value_impl(block: *mut u8, out: *mut u32, id: i32) -> *mut u32 {
-    let ours = (EXT_FIRST_CHANNEL..EXT_FIRST_CHANNEL + CHANNEL_COUNT as i32).contains(&id);
-    if !ours || out.is_null() {
+    let value = if id == EXT_FLAME_TYPE {
+        &FLAME_TYPE
+    } else if (EXT_FIRST_CHANNEL..EXT_FIRST_CHANNEL + CHANNEL_COUNT as i32).contains(&id) {
+        &CHANNELS[(id - EXT_FIRST_CHANNEL) as usize]
+    } else {
+        return unsafe { orig::<GetExtValueFn>(&ORIG_GET_EXT_VALUE)(block, out, id) };
+    };
+    if out.is_null() {
         return unsafe { orig::<GetExtValueFn>(&ORIG_GET_EXT_VALUE)(block, out, id) };
     }
-    let channel = (id - EXT_FIRST_CHANNEL) as usize;
-    unsafe { *out = CHANNELS[channel].load(Ordering::Relaxed) };
+    unsafe { *out = value.load(Ordering::Relaxed) };
     out
 }
 
@@ -86,10 +106,10 @@ fn poll_loop() {
     let mut last_choice = None;
     loop {
         std::thread::sleep(POLL_INTERVAL);
-        let choice = rows::choice(ROW_THRUSTER);
-        if choice != last_choice {
-            last_choice = choice;
-            log(&format!("thrusters: flame type {choice:?}"));
+        if let Some(choice) = rows::choice(ROW_THRUSTER).filter(|choice| last_choice != Some(*choice)) {
+            last_choice = Some(choice);
+            FLAME_TYPE.store((choice as f32).to_bits(), Ordering::Relaxed);
+            log(&format!("thrusters: flame type {}", FLAME_TYPES[choice as usize]));
         }
         let Some(rgb) = rows::color(ROW_THRUSTER) else { continue };
         if last != Some(rgb) {
@@ -102,8 +122,7 @@ fn poll_loop() {
 
 pub(crate) fn start() {
     rows::claim(ROW_THRUSTER, "THRUSTER", DEFAULT_COLOR);
-    // TEST: a list of flame types; nothing uses the choice yet.
-    rows::set_choices(ROW_THRUSTER, &["Normal", "Plasma", "Coral"], 0);
+    rows::set_choices(ROW_THRUSTER, &FLAME_TYPES, 0);
     set_channels(DEFAULT_COLOR);
     std::thread::spawn(poll_loop);
 }

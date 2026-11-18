@@ -2,7 +2,8 @@
 
 More to customize in Armored Core VI's Paint screen (1.09.1), saved with each AC:
 
-- **Thruster color.** Your AC's thruster flames take it: boosting, quick boosting, assault boosting, all of it.
+- **Thruster color and flame type.** Your AC's thruster flames take the color: boosting, quick boosting, assault
+  boosting, all of it. The type picks the flame itself, whatever generator you have.
 - **HUD color, warning color and opacity** for the in-mission HUD.
 - **Light brightness**, a setting the game has but hides.
 
@@ -14,8 +15,15 @@ More to customize in Armored Core VI's Paint screen (1.09.1), saved with each AC
 2. In the garage, Paint: below WEATHERING there's a new panel, ENTIRE AC, with three rows. Each is one value for
    the whole AC, whichever part tab is open.
 
-**THRUSTER** works like DEVICE: a color. Until you pick one, it's white. Dark colors work too: the flames darken
-what's behind them instead of glowing.
+**THRUSTER** is a color, and a flame type as its Material. Until you pick a color, it's white. Dark colors work
+too: the flames darken what's behind them instead of glowing. The types:
+- **Generator's own** (the default): the flames of the generator you have equipped.
+- **Combustion**, **Current**, **Coral**: the game's three kinds of flame. They differ in shape and detail, not only
+  in color: Current has its own flame model, Coral adds sparkles and haze.
+- **The same three as an "ALLMIND fanout"**: five flames per nozzle, fanned out, with extra glow, the way the boss
+  ALLMIND's thrusters are built.
+
+The exhaust fumes stay as the game has them.
 
 The other two are for the in-mission HUD:
 - **HUD**: its color, and an opacity (its Material menu, 0% up to 100%).
@@ -54,6 +62,13 @@ Coming from 0.1.0 (AC6-Thruster-Customization)? The save file has a new name: re
   from the cutscene rather than your AC and plays stock. Yours play two recolored copies of the stock flame, one adding the color and one subtracting what the color lacks
   (that's what makes dark colors work). It decides once and sticks to it, since a flame it already started keeps
   playing even if it switches.
+- **Flame types.** The game keeps a flame per thruster effect and generator type (combustion, current, Coral): 20
+  effects, three flames each. Every wrapper knows its effect's three flames, and on your AC plays the recolored
+  copies of the one for the type you chose (served to the effects as another external value). The "ALLMIND
+  fanout" is an arrangement, not a flame: the boss's own thruster effects are several copies of one ordinary
+  current-type flame, each offset and angled outward, plus a glow and lights. The wrappers place five copies of
+  the chosen type's flame the same way, scaled to an AC's nozzle, with the boss's extras (without its flames)
+  alongside. Long flames (quick boost, assault boost) fan out less, so their ends stay together.
 - **DEVICE brightness.** Nothing new is added: the game's own material menu already lists the ten light intensity
   materials (90-99) for DEVICE, with their text and live preview, and the value is ordinary paint data. The DEVICE
   row was just built color-only, with no way into that menu. Four hooks build it like the other color rows

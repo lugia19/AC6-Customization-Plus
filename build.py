@@ -27,6 +27,8 @@ STOCK_COLOR_TYPES = (0, 1, 2)
 CUSTOM_TYPE_SHIFT = 3
 # Player generators are 650xxxxx; the NPC versions (659xxxxx) are only used by special ACs and stay untouched.
 NPC_GENERATOR_IDS_START = 65900000
+# Thruster effect rows that stay stock: the exhaust fumes (smoke only, no flame).
+STOCK_FLAME_ROWS = {410031}
 
 FIELD_SIZES = {'s8': 1, 'u8': 1, 'dummy8': 1, 's16': 2, 'u16': 2, 's32': 4, 'u32': 4, 'f32': 4, 'angle32': 4,
                'b32': 4, 'f64': 8, 'fixstr': 1, 'fixstrW': 2}
@@ -126,7 +128,9 @@ def main():
     regulation = shutil.copy(os.path.join(args.game, "regulation.bin"), WORK)
     effects = shutil.copy(os.path.join(args.game, "sfx", "sfxbnd_commoneffects.ffxbnd.dcx"), WORK)
     archives = [regulation, effects]
-    witchy(archives, [unpacked(a) for a in archives])
+    # Only read: ALLMIND's thruster effects, for the ALLMIND flame type's extras (fxr/build_fxrs.mjs).
+    allmind_effects = shutil.copy(os.path.join(args.game, "sfx", "sfxbnd_m30.ffxbnd.dcx"), WORK)
+    witchy([*archives, allmind_effects], [unpacked(a) for a in [*archives, allmind_effects]])
 
     params = unpacked(regulation)
     # The generator-dependent effect tables: row = an effect the game spawns, column t (sfxId<t>) = what it uses for
@@ -142,15 +146,23 @@ def main():
         return sfx if sfx != -1 or row == 0 else row
 
     effect_dir = os.path.join(unpacked(effects), "effect")
-    stock_flames = sorted({effect_for(thrusters, row, t) for row in thrusters.rows for t in STOCK_COLOR_TYPES} - {-1})
+    # Each row's flames for the three stock types (row 0 has none).
+    flame_rows = [flames for row in sorted(thrusters.rows) if row not in STOCK_FLAME_ROWS
+                  and -1 not in (flames := [effect_for(thrusters, row, t) for t in STOCK_COLOR_TYPES])]
+    # A flame is one row's, for one type (or the same for every type): its wrapper can then offer the row's others.
+    places = {(flame, tuple(flames)) for flames in flame_rows for flame in flames}
+    assert len(places) == len({flame for flame, _ in places}), "a stock flame is in rows with different flames"
 
-    # Custom flames: a wrapper per stock flame, plus its two custom copies (see fxr/build_fxrs.mjs).
+    # Custom flames: a wrapper per stock flame, plus two custom copies of each (see fxr/build_fxrs.mjs).
     fxr_dir = os.path.join(ROOT, "fxr")
     shell = os.name == "nt"
     if not os.path.isdir(os.path.join(fxr_dir, "node_modules")):
         subprocess.run(["npm", "install"], cwd=fxr_dir, check=True, shell=shell)
     id_map_path = os.path.join(WORK, "id_map.json")
-    subprocess.run(["node", "build_fxrs.mjs", effect_dir, id_map_path, *map(str, stock_flames)], cwd=fxr_dir,
+    flame_rows_path = os.path.join(WORK, "flame_rows.json")
+    json.dump(flame_rows, open(flame_rows_path, "w"))
+    subprocess.run(["node", "build_fxrs.mjs", effect_dir, id_map_path, flame_rows_path,
+                    os.path.join(unpacked(allmind_effects), "effect")], cwd=fxr_dir,
                    check=True, shell=shell)
     id_map = json.load(open(id_map_path))
     wrapper_of = {int(stock): wrapper for stock, wrapper in id_map["wrappers"].items()}
@@ -160,7 +172,11 @@ def main():
     for new_id, source_id in id_map["resources"].items():
         target = os.path.join(reslists, f"f{int(new_id):09d}.ffxreslist")
         assert not os.path.exists(target), f"{new_id} collides with an existing effect"
-        shutil.copy(os.path.join(reslists, f"f{source_id:09d}.ffxreslist"), target)
+        source = f"f{source_id:09d}.ffxreslist"
+        if not os.path.exists(os.path.join(reslists, source)):  # one of ALLMIND's
+            shutil.copy(os.path.join(unpacked(allmind_effects), "ResourceList", source), target)
+        else:
+            shutil.copy(os.path.join(reslists, source), target)
 
     # Params: each custom type t+3 uses what stock type t uses, as its wrapper in the thruster table and unchanged in
     # the replace table (or a Coral generator would fall back to the non-Coral versions), and every player generator
@@ -185,10 +201,10 @@ def main():
     generators.save()
     print(f"{switched} player generators switched to their custom flames")
 
-    # The extra Paint rows' choices are listed as materials, which have to exist: row 0 (THRUSTER) has three (TEST;
-    # dll/src/thrusters.rs), row 1 (HUD) eleven (dll/src/hud.rs OPACITIES).
+    # The extra Paint rows' choices are listed as materials, which have to exist: row 0 (THRUSTER) has seven
+    # (dll/src/thrusters.rs FLAME_TYPES), row 1 (HUD) eleven (dll/src/hud.rs OPACITIES).
     add_materials = os.path.join(ROOT, "tools", "add_choice_materials.py")
-    for row, choices in [(0, 3), (1, 11)]:
+    for row, choices in [(0, 7), (1, 11)]:
         subprocess.run([sys.executable, add_materials, os.path.join(params, "PlayerMaterialPresetParam.param"),
                         str(row), str(choices)], check=True)
 
