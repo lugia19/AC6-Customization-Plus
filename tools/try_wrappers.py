@@ -22,6 +22,7 @@ def main():
     args = parser.parse_args()
 
     effect_dir = os.path.join(WORK, "sfxbnd_commoneffects-ffxbnd-dcx-wffxbnd", "effect")
+    assert os.path.exists(os.path.join(WORK, "flame_rows.json")), "run build.py first: this uses its build/ folder"
     wrappers = os.path.join(WORK, "wrappers")
     shutil.rmtree(wrappers, ignore_errors=True)
     os.makedirs(wrappers)

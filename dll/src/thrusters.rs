@@ -8,7 +8,7 @@
 //!
 //! Effects read external values through 0x142b56480, effectively `float *get(value_block, float *out, int id)`.
 //!
-//! A polling thread caches the row's color for the hook.
+//! A polling thread caches the row's color and flame type for the hook.
 
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::time::Duration;
@@ -51,18 +51,24 @@ pub(crate) fn hook() -> Hook {
 /// Called for every external value read of every effect. Our IDs don't need the game's lookup at all (nothing else
 /// provides them), so it's skipped for them.
 unsafe extern "system" fn get_ext_value_impl(block: *mut u8, out: *mut u32, id: i32) -> *mut u32 {
-    let value = if id == EXT_FLAME_TYPE {
-        &FLAME_TYPE
-    } else if (EXT_FIRST_CHANNEL..EXT_FIRST_CHANNEL + CHANNEL_COUNT as i32).contains(&id) {
-        &CHANNELS[(id - EXT_FIRST_CHANNEL) as usize]
-    } else {
-        return unsafe { orig::<GetExtValueFn>(&ORIG_GET_EXT_VALUE)(block, out, id) };
-    };
-    if out.is_null() {
-        return unsafe { orig::<GetExtValueFn>(&ORIG_GET_EXT_VALUE)(block, out, id) };
+    match served(id) {
+        Some(value) if !out.is_null() => {
+            unsafe { *out = value.load(Ordering::Relaxed) };
+            out
+        }
+        _ => unsafe { orig::<GetExtValueFn>(&ORIG_GET_EXT_VALUE)(block, out, id) },
     }
-    unsafe { *out = value.load(Ordering::Relaxed) };
-    out
+}
+
+/// The value we serve for an external value ID, as f32 bits, if it's one of ours.
+fn served(id: i32) -> Option<&'static AtomicU32> {
+    if id == EXT_FLAME_TYPE {
+        Some(&FLAME_TYPE)
+    } else if (EXT_FIRST_CHANNEL..EXT_FIRST_CHANNEL + CHANNEL_COUNT as i32).contains(&id) {
+        Some(&CHANNELS[(id - EXT_FIRST_CHANNEL) as usize])
+    } else {
+        None
+    }
 }
 
 /// sRGB (what the color picker shows) to linear light.
@@ -109,7 +115,7 @@ fn poll_loop() {
         if let Some(choice) = rows::choice(ROW_THRUSTER).filter(|choice| last_choice != Some(*choice)) {
             last_choice = Some(choice);
             FLAME_TYPE.store((choice as f32).to_bits(), Ordering::Relaxed);
-            log(&format!("thrusters: flame type {}", FLAME_TYPES[choice as usize]));
+            log(&format!("thrusters: flame type {}", FLAME_TYPES.get(choice as usize).copied().unwrap_or("?")));
         }
         let Some(rgb) = rows::color(ROW_THRUSTER) else { continue };
         if last != Some(rgb) {

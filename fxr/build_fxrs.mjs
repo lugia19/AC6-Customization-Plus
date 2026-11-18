@@ -12,11 +12,12 @@
 //     darken it (additive flames can't get darker than what's behind them). Nothing for bright colors.
 // Usage: node build_fxrs.mjs <unpacked sfxbnd_commoneffects effect dir> <id map json out> <rows json>
 //   <unpacked sfxbnd_m30 effect dir> [wrappers dir]
-// (rows: a list of [combustion, current, Coral] stock FXR IDs; sfxbnd_m30 has ALLMIND's thruster effects; with a
-// wrappers dir, only the wrappers are built, into it, overwriting: for trying them in the running game with an FXR
-// reloader)
-// Writes the new FXRs into the same dir, and a map {wrappers: {stock id: wrapper id}, resources: {new id: source id}}
-// (each new FXR needs its source's resource list; wrappers only hold proxies).
+// (rows: a list of [combustion, current, Coral] stock FXR IDs; sfxbnd_m30 has ALLMIND's thruster effects)
+// Writes the new FXRs into the effect dir, and a map {wrappers: {stock id: wrapper id}, resources: {new id: source id},
+// allmindResources: the same for sources in sfxbnd_m30, flameTypes: how many types a wrapper offers} (each new FXR
+// needs its source's resource list; wrappers only hold proxies).
+// With a wrappers dir, only the wrappers and the fans' extras are built, into it, overwriting, and no map: for trying
+// them in the running game with an FXR reloader.
 import {
   ActionType,
   BasicNode,
@@ -45,22 +46,12 @@ const EXT_PLAYERS_FLAME = 900010
 // The flame type the player chose (dll/src/thrusters.rs): 0 the generator's own, 1 + a type (0 combustion, 1 current,
 // 2 Coral, then the same three as fans) otherwise.
 const EXT_FLAME_TYPE = 900011
+// Each of a row's flames, plain and as a fan.
+const FLAME_TYPES_PER_ROW = 2
 // The fan types: how the boss ALLMIND's thruster effects are built (f000642001: copies of one current-type nozzle
 // flame, each on a node with an offset and a rotation, two rows fanning outward). The boss only has it with current
-// flames; here every type gets one. Offsets in meters (x right, y up),
-// rotations in degrees; the boss's five-flame layout, with its spacing and angles scaled to an AC's nozzle.
-const FAN_BASE_TYPES = [0, 1, 2] // combustion, current, Coral
-const FAN_SCALE = 0.15
-// The longer a flame, the further apart a given angle puts the flames' ends: by the family of the row's flames (their
-// ID / 10000), 43 quick boost and 45 assault boost being the long ones.
-const FAN_ANGLE_SCALE = { 43: 0.3, 45: 0.3 }
-const FAN_ANGLE_SCALE_OTHERS = 0.75
-// The extras' size, next to the boss's.
-const FAN_EXTRAS_SCALE = 0.1
-// What the boss's two cluster effects have besides their flames (a wide glow and lights; the heavy one: heat
-// distortion, a lens flare, more glow), by the family of the row's flames: 41 the regular flames, 45 assault boost. Rows of other families (quick boost, kicks...) get the fan alone: those flames end on their own,
-// and the extras wouldn't.
-const FAN_EXTRAS = { 41: 642001, 45: 642002 }
+// flames; here every type gets one. The boss's five-flame layout: offsets in meters (x right, y up), rotations in
+// degrees.
 const FAN = [
   { offset: [0.65, 0.35, 0], rotation: [-10, 10, 0] },
   { offset: [0, 0.35, 0], rotation: [-10, 0, 0] },
@@ -68,12 +59,26 @@ const FAN = [
   { offset: [0.95, -0.2, 0], rotation: [0, 15, 0] },
   { offset: [-0.95, -0.2, 0], rotation: [0, -15, 0] },
 ]
+// Its spacing and angles, scaled to an AC's nozzle. The longer a flame, the further apart a given angle puts the
+// flames' ends, so the long ones get less. Rows are told apart by the family of their flames (their ID / 10000): 41
+// regular, 43 quick boost, 45 assault boost.
+const FAN_SCALE = 0.15
+const FAN_ANGLE_SCALE = 0.75
+const FAN_ANGLE_SCALE_LONG = 0.3
+const LONG_FLAME_FAMILIES = new Set([43, 45])
+// What the boss's two cluster effects have besides their flames (a wide glow and lights; the heavy one: heat
+// distortion, a lens flare, more glow), by family, and their size next to the boss's. Other families get the fan
+// alone: whether the extras would end with a quick boost's flame is untested.
+const FAN_EXTRAS = { 41: 642001, 45: 642002 }
+const FAN_EXTRAS_SCALE = 0.1
 // Game value: the spawner's termination signal.
 const EXT_TERMINATE = 0
 
 const WRAPPER_OFFSET = 9000000
 const ADD_OFFSET = 9100000
 const REMOVE_OFFSET = 9200000
+// The two copies of an effect: [ID offset, whether it's the remove copy].
+const COPIES = [[ADD_OFFSET, false], [REMOVE_OFFSET, true]]
 
 // Blend modes that add light: Add, and Unk0 / Unk7 (the library documents both as behaving like Add).
 const ADDITIVE = new Set([BlendMode.Add, BlendMode.Unk0, BlendMode.Unk7])
@@ -179,9 +184,10 @@ function recolor(fxr, remove) {
 
 // The wrapper for stock flame `stockId`, which is its row's flame for generator type `ownType`: a child node per effect
 // it can play (a proxy to it). STOCK enables the stock flame; CUSTOM + a type enables both copies of the row's flame
-// for that type, or, for the types after the row's, a fan. The choice is made once, at spawn, and kept: a proxy's effect keeps playing after its node is
-// disabled (switching from stock to custom left the stock flame running under the custom one), so a wrapper may only
-// ever enable one of them. Conditions are checked in order, first match wins:
+// for that type; CUSTOM + the type count + a type enables that type's fan. The choice is made once, at spawn, and
+// kept: a proxy's effect keeps playing after its node is disabled (switching from stock to custom left the stock
+// flame running under the custom one), so a wrapper may only ever enable one of them. Conditions are checked in
+// order, first match wins:
 // - DECIDING (shows nothing): no DLL (its color values read 0) -> STOCK; the player's flame -> PICKING; someone else's
 //   -> STOCK; still not known after 0.3 s -> STOCK (the DLL answers on the owner's next slot update, a frame after
 //   the spawn; the wait only lasts while there's no answer, e.g. a flame a cutscene spawned).
@@ -191,9 +197,13 @@ function wrapper(stockId, rowFlames, ownType) {
   const playersFlame = `External(${EXT_PLAYERS_FLAME})`
   const flameType = `External(${EXT_FLAME_TYPE})`
   const terminate = `External(${EXT_TERMINATE}) >= 1 then terminate`
-  const STOCK = 1, PICKING = 2, CUSTOM = 3
-  const types = [...rowFlames.keys(), ...FAN_BASE_TYPES.map((_, fan) => rowFlames.length + fan)]
+  const STOCK = 1, PICKING = 2, CUSTOM = 3 // DECIDING is 0, where an effect starts
+  const fanState = type => CUSTOM + rowFlames.length + type
+  const customStates = FLAME_TYPES_PER_ROW * rowFlames.length
+  // The served value is 1 + the state's place among the CUSTOM ones: highest first, since the first match wins.
+  const pick = Array.from({ length: customStates }, (_, i) => `${flameType} >= ${i + 1} then ${CUSTOM + i}`).reverse()
   const states = [
+    // DECIDING
     State.from([
       terminate,
       `External(${EXT_ADD}) < 1 then ${STOCK}`,
@@ -201,13 +211,12 @@ function wrapper(stockId, rowFlames, ownType) {
       `${playersFlame} >= 1 then ${STOCK}`,
       `StateTime > 0.3 then ${STOCK}`,
     ]),
+    // STOCK
     State.from([terminate]),
-    State.from([
-      terminate,
-      ...types.map(type => `${flameType} >= ${type + 1} then ${CUSTOM + type}`).reverse(),
-      `${flameType} < 1 then ${CUSTOM + ownType}`,
-    ]),
-    ...types.map(() => State.from([terminate])),
+    // PICKING
+    State.from([terminate, ...pick, `${flameType} < 1 then ${CUSTOM + ownType}`]),
+    // CUSTOM...
+    ...pick.map(() => State.from([terminate])),
   ]
   // A node with `actions` over `nodes`, enabled (config 0) only in `state`, disabled (-1) in the others.
   const inState = (state, actions, nodes) => {
@@ -215,36 +224,30 @@ function wrapper(stockId, rowFlames, ownType) {
     return new BasicNode(actions, nodes).mapStates(...configPerState)
   }
   const child = (sfx, state) => inState(state, [], [new ProxyNode(sfx)])
+  const copies = (sfx, state) => COPIES.map(([offset]) => child(sfx + offset, state))
   const family = Math.floor(rowFlames[0] / 10000)
-  const angleScale = FAN_ANGLE_SCALE[family] ?? FAN_ANGLE_SCALE_OTHERS
+  const angleScale = LONG_FLAME_FAMILIES.has(family) ? FAN_ANGLE_SCALE_LONG : FAN_ANGLE_SCALE
   const extras = FAN_EXTRAS[family]
-  // A fan: the base type's flame at each of the layout's places, and the extras.
-  const fans = FAN_BASE_TYPES.flatMap((baseType, fan) => {
-    const state = CUSTOM + rowFlames.length + fan
-    const base = rowFlames[baseType]
-    return [
-      ...FAN.map(({ offset, rotation }) =>
-        inState(
-          state,
-          [
-            new StaticNodeTransform({
-              offset: offset.map(m => m * FAN_SCALE),
-              rotation: rotation.map(degrees => degrees * angleScale),
-            }),
-          ],
-          [new ProxyNode(base + ADD_OFFSET), new ProxyNode(base + REMOVE_OFFSET)],
-        ),
+  // A type's fan: its flame at each of the layout's places, and the extras.
+  const fan = (flame, type) => [
+    ...FAN.map(({ offset, rotation }) =>
+      inState(
+        fanState(type),
+        [
+          new StaticNodeTransform({
+            offset: offset.map(m => m * FAN_SCALE),
+            rotation: rotation.map(degrees => degrees * angleScale),
+          }),
+        ],
+        COPIES.map(([copy]) => new ProxyNode(flame + copy)),
       ),
-      ...(extras ? [child(extras + ADD_OFFSET, state), child(extras + REMOVE_OFFSET, state)] : []),
-    ]
-  })
+    ),
+    ...(extras ? copies(extras, fanState(type)) : []),
+  ]
   return new FXR(stockId + WRAPPER_OFFSET, states, [
     child(stockId, STOCK),
-    ...rowFlames.flatMap((flame, type) => [
-      child(flame + ADD_OFFSET, CUSTOM + type),
-      child(flame + REMOVE_OFFSET, CUSTOM + type),
-    ]),
-    ...fans,
+    ...rowFlames.flatMap((flame, type) => copies(flame, CUSTOM + type)),
+    ...rowFlames.flatMap(fan),
   ])
 }
 
@@ -259,8 +262,8 @@ function withoutProxies(node) {
 async function fanExtras() {
   const extras = []
   for (const extrasId of new Set(Object.values(FAN_EXTRAS))) {
-    const source = path.join(allmindDir, path.basename(file(extrasId)))
-    for (const [offset, remove] of [[ADD_OFFSET, false], [REMOVE_OFFSET, true]]) {
+    const source = path.join(allmindDir, fileName(extrasId))
+    for (const [offset, remove] of COPIES) {
       const fxr = await FXR.read(source, Game.ArmoredCore6)
       fxr.id = extrasId + offset
       withoutProxies(fxr.root)
@@ -275,67 +278,53 @@ async function fanExtras() {
 const [effectDir, idMapPath, rowsPath, allmindDir, wrappersDir] = process.argv.slice(2)
 const rows = JSON.parse(fs.readFileSync(rowsPath, 'utf8'))
 const stockIds = [...new Set(rows.flat())]
-const file = id => path.join(effectDir, `f${String(id).padStart(9, '0')}.fxr`)
+const fileName = id => `f${String(id).padStart(9, '0')}.fxr`
+const file = id => path.join(effectDir, fileName(id))
 // A path, not fs.readFileSync: small files come back as views into Node's shared buffer pool, which the library
 // reads from the pool's start.
 const read = id => FXR.read(file(id), Game.ArmoredCore6)
-// The effect dir is a fresh unpack of the game's effects, so an existing file at a new ID is a stock effect.
+// The effect dir is a fresh unpack of the game's effects, so an existing file at a new ID is a stock effect. The
+// wrappers dir is ours to overwrite.
 async function save(fxr) {
+  if (wrappersDir) return fxr.saveAs(path.join(wrappersDir, fileName(fxr.id)), Game.ArmoredCore6)
   if (fs.existsSync(file(fxr.id))) throw new Error(`${fxr.id} would overwrite an existing effect`)
   await fxr.saveAs(file(fxr.id), Game.ArmoredCore6)
 }
 
-if (wrappersDir) {
-  for (const { fxr } of await fanExtras()) {
-    await fxr.saveAs(path.join(wrappersDir, path.basename(file(fxr.id))), Game.ArmoredCore6)
-  }
-  let count = 0
-  const built = new Set()
-  for (const rowFlames of rows) {
-    for (const [type, stockId] of rowFlames.entries()) {
-      if (built.has(stockId)) continue
-      built.add(stockId)
-      const fxr = wrapper(stockId, rowFlames, type)
-      await fxr.saveAs(path.join(wrappersDir, path.basename(file(fxr.id))), Game.ArmoredCore6)
-      count++
-    }
-  }
-  console.log(`${count} wrappers in ${wrappersDir}`)
-  process.exit(0)
-}
-
 // Every stock flame and everything it references through proxies gets both copies.
+const resources = {}
 const sources = new Set()
-const pending = [...stockIds]
-while (pending.length) {
-  const id = pending.pop()
-  if (sources.has(id)) continue
-  sources.add(id)
-  for (const node of (await read(id)).root.walk()) {
-    if (node instanceof ProxyNode) pending.push(node.sfx)
+if (!wrappersDir) {
+  const pending = [...stockIds]
+  while (pending.length) {
+    const id = pending.pop()
+    if (sources.has(id)) continue
+    sources.add(id)
+    for (const node of (await read(id)).root.walk()) {
+      if (node instanceof ProxyNode) pending.push(node.sfx)
+    }
+  }
+  for (const sourceId of sources) {
+    for (const [offset, remove] of COPIES) {
+      const fxr = await read(sourceId)
+      fxr.id = sourceId + offset
+      for (const node of fxr.root.walk()) {
+        if (node instanceof ProxyNode) node.sfx += offset
+      }
+      recolor(fxr, remove)
+      await save(fxr)
+      resources[fxr.id] = sourceId
+    }
   }
 }
 
-const resources = {}
-for (const sourceId of sources) {
-  for (const [offset, remove] of [[ADD_OFFSET, false], [REMOVE_OFFSET, true]]) {
-    const fxr = await read(sourceId)
-    fxr.id = sourceId + offset
-    for (const node of fxr.root.walk()) {
-      if (node instanceof ProxyNode) node.sfx += offset
-    }
-    recolor(fxr, remove)
-    await save(fxr)
-    resources[fxr.id] = sourceId
-  }
+const allmindResources = {}
+for (const { fxr, source } of await fanExtras()) {
+  await save(fxr)
+  allmindResources[fxr.id] = source
 }
 
 // A stock flame is one row's, for one type; a row with the same flame for every type gets one wrapper.
-for (const { fxr, source } of await fanExtras()) {
-  await save(fxr)
-  resources[fxr.id] = source
-}
-
 const wrappers = {}
 for (const rowFlames of rows) {
   for (const [type, stockId] of rowFlames.entries()) {
@@ -345,5 +334,10 @@ for (const rowFlames of rows) {
     wrappers[stockId] = fxr.id
   }
 }
-fs.writeFileSync(idMapPath, JSON.stringify({ wrappers, resources }, null, 1))
-console.log(`${stockIds.length} wrappers, ${sources.size * 2} copies (${sources.size} sources)`)
+if (wrappersDir) {
+  console.log(`${Object.keys(wrappers).length} wrappers in ${wrappersDir}`)
+} else {
+  const flameTypes = FLAME_TYPES_PER_ROW * rows[0].length
+  fs.writeFileSync(idMapPath, JSON.stringify({ wrappers, resources, allmindResources, flameTypes }, null, 1))
+  console.log(`${stockIds.length} wrappers, ${sources.size * 2} copies (${sources.size} sources)`)
+}
