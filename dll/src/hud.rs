@@ -16,7 +16,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::hud_movie::{self, Look};
-use crate::rows::{self, ROW_HUD, ROW_HUD_WARNING};
+use crate::rows::{self, ROW_HUD};
 use crate::{Hook, log, orig};
 
 // The HUD row's choices, in percent. build.py adds as many materials to the regulation.
@@ -187,14 +187,14 @@ pub(crate) fn claim_rows() {
     let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
     rows::claim(ROW_HUD, "HUD", Look::STOCK.hud);
     // Fully opaque, the last one, is the default.
-    rows::set_choices(ROW_HUD, &labels, OPACITIES.len() as u32 - 1);
-    rows::claim(ROW_HUD_WARNING, "HUD WARNING", Look::STOCK.warning);
+    rows::set_choices(ROW_HUD, "Opacity", &labels, OPACITIES.len() as u32 - 1);
+    rows::set_second_color(ROW_HUD, "Warning color", Look::STOCK.warning);
 }
 
 /// What the rows say right now. None while the player's data isn't loaded.
 fn rows_look() -> Option<Look> {
     let hud = rows::color(ROW_HUD)?;
-    let warning = rows::color(ROW_HUD_WARNING)?;
+    let warning = rows::second_color(ROW_HUD)?;
     let opacity = *OPACITIES.get(rows::choice(ROW_HUD)? as usize)?;
     Some(Look { hud, warning, opacity })
 }

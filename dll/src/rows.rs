@@ -13,6 +13,7 @@
 //! - 0x140d3cb00 list -> list widget: the row builder's call moves the extra rows first.
 //! - 0x140f40d10 kind -> edited slots: an extra row's kind edits its own slot.
 //! - 0x14045a7f0 / 0x14045afc0 paint color reader / writer: an extra slot's color is in its row's storage.
+//! - 0x140f3fd90 screen setup of the panels: ours is hidden like the game's three.
 //! - 0x140f43610 row kind -> panel: an extra row with choices, and DEVICE's, get what the color slots' cases make,
 //!   for their slot.
 //! - 0x14045da60 first material of a slot: an extra slot's is its row's first choice.
@@ -27,7 +28,6 @@ use crate::{Hook, device, log, orig, paint_data};
 // The rows, top to bottom.
 pub(crate) const ROW_THRUSTER: usize = 0;
 pub(crate) const ROW_HUD: usize = 1;
-pub(crate) const ROW_HUD_WARNING: usize = 2;
 const ROW_COUNT: usize = 3;
 // Not 0-8: the real color slots and the color set / pattern / weathering row kinds.
 static SLOTS: [u8; ROW_COUNT] = [9, 10, 11];
@@ -40,16 +40,39 @@ const SECTION_SIZE: usize = 0x44;
 const SECTION_COLORS_OFFSET: usize = 8;
 const SECTION_MATERIALS_OFFSET: usize = 0x20;
 const STORAGE_SLOT: u8 = 0;
+// A row with choices can also have a second color (its panel's third entry, panel.rs), in the section's color 1.
+const SECOND_COLOR_STORAGE_SLOT: usize = 1;
 
-/// A row's choices are materials first_material(row).., which build.py adds to PlayerMaterialPresetParam
-/// (tools/add_choice_materials.py): from 200, 300, 400. Above the stock ones (0-35 and 90-99) and apart from them and
-/// from each other, because the material menu lists consecutive IDs until one is missing (from 100, DEVICE's menu
-/// ran on from 99 into row 0's choices).
-/// 36 at most: as many as the stock menu lists.
-const MAX_CHOICES: usize = 36;
-const FIRST_MATERIAL: u32 = 200;
-const MATERIALS_SPACING: u32 = 100;
-const _: () = assert!((MAX_CHOICES as u32) < MATERIALS_SPACING);
+/// A row's second color's name, if it has one.
+pub(crate) fn second_color_label(row: usize) -> Option<&'static [u16]> {
+    settings(row)?.second_color.map(|(label, _)| label)
+}
+
+fn second_color_offset(row: usize) -> usize {
+    SECTIONS[row] as usize * SECTION_SIZE + SECTION_COLORS_OFFSET + SECOND_COLOR_STORAGE_SLOT * 4
+}
+
+/// The second color shown for a stored value: the stored one if it was picked, otherwise the row's default.
+fn shown_second_color(row: usize, stored: u32) -> u32 {
+    let default = settings(row).and_then(|s| s.second_color).map_or(ALPHA_MASK, |(_, default)| default);
+    if stored & ALPHA_MASK == PICKED_ALPHA { stored | ALPHA_MASK } else { default }
+}
+
+/// A row's second color in a paint block (the edit context's working one), as stored (RGBA bytes, alpha 0xFF).
+pub(crate) unsafe fn stored_second_color(paint: usize, row: usize) -> u32 {
+    shown_second_color(row, unsafe { *((paint + second_color_offset(row)) as *const u32) })
+}
+
+/// A row's second color on the player's AC (0xRRGGBB). None while the player's data isn't loaded.
+pub(crate) fn second_color(row: usize) -> Option<u32> {
+    settings(row)?;
+    Some(swap_red_blue(shown_second_color(row, paint_data::value(second_color_offset(row))?)))
+}
+
+/// Stores a row's second color in a paint block, marked as picked.
+pub(crate) unsafe fn store_second_color(paint: usize, row: usize, color: u32) {
+    unsafe { *((paint + second_color_offset(row)) as *mut u32) = (color & !ALPHA_MASK) | PICKED_ALPHA };
+}
 
 /// A claimed row. Texts are UTF-16 with a terminator; they and the rows are never freed (the game's labels keep the
 /// texts' addresses).
@@ -61,6 +84,10 @@ struct Row {
     /// Empty for a color-only row.
     choices: &'static [&'static [u16]],
     default_choice: u32,
+    /// The choices' name: the header of their entry in the panel, and the option list's title.
+    choices_title: &'static [u16],
+    /// A second color: its name and default (as stored).
+    second_color: Option<(&'static [u16], u32)>,
 }
 
 static ROWS: [AtomicPtr<Row>; ROW_COUNT] = [const { AtomicPtr::new(std::ptr::null_mut()) }; ROW_COUNT];
@@ -108,9 +135,6 @@ static ORIG_EDITED_SLOTS: AtomicUsize = AtomicUsize::new(0);
 static ORIG_READ_COLOR: AtomicUsize = AtomicUsize::new(0);
 static ORIG_WRITE_COLORS: AtomicUsize = AtomicUsize::new(0);
 static ORIG_MAKE_PANEL: AtomicUsize = AtomicUsize::new(0);
-static ORIG_FIRST_MATERIAL: AtomicUsize = AtomicUsize::new(0);
-static ORIG_READ_MATERIAL: AtomicUsize = AtomicUsize::new(0);
-static ORIG_WRITE_MATERIALS: AtomicUsize = AtomicUsize::new(0);
 static ORIG_MENU_MATERIAL_TEXT: AtomicUsize = AtomicUsize::new(0);
 static ORIG_PANEL_MATERIAL_TEXT: AtomicUsize = AtomicUsize::new(0);
 // What the panel switch's cases for the color slots do: build_panel(copy_panel_argument(temporary, list + 0x78),
@@ -119,6 +143,21 @@ const BUILD_PANEL_ADDR: usize = 0x140f49590;
 const COPY_PANEL_ARGUMENT_ADDR: usize = 0x140c92e20;
 const ADD_REFERENCE_ADDR: usize = 0x142923570;
 const LIST_PANEL_ARGUMENT_OFFSET: usize = 0x78;
+// The extra rows' own panel in the Paint movie (tools/build_gfx.py): the Color / Material panel with a color item
+// in third place. At screen setup (0x140f3fd90) the game looks its three panels up by name in the screen's
+// MainContent clip, with find_clip(parent handle, out handle, name), and hides them with set_visible(handle, false);
+// the setup hook does the same for ours. A row's panel is built, and shown, when the cursor reaches the row
+// (0x140f44b30 -> the panel switch), and ours is looked up again there: a handle is only a reference to the clip
+// (Research\paint-popup\wide\report_clip_handles.md). list[0] is the Paint screen.
+const ROWS_PANEL_NAME: &std::ffi::CStr = c"Color_Material_Color_Select";
+const SCREEN_MAIN_CONTENT_OFFSET: usize = 0x1da0;
+const FIND_CLIP_ADDR: usize = 0x140c928e0;
+const SET_VISIBLE_ADDR: usize = 0x140c6aab0;
+// A handle is destroyed with destroy_handle_value(handle + 0x28), then destroy_handle(handle).
+const DESTROY_HANDLE_VALUE_ADDR: usize = 0x14160f3d0;
+const DESTROY_HANDLE_ADDR: usize = 0x140c6a370;
+const HANDLE_VALUE_OFFSET: usize = 0x28;
+static ORIG_SET_UP_PANELS: AtomicUsize = AtomicUsize::new(0);
 const LIST_PANEL_OWNER_OFFSET: usize = 8;
 const OBJECT_REFERENCES_OFFSET: usize = 8;
 
@@ -165,30 +204,47 @@ fn swap_red_blue(color: u32) -> u32 {
 /// Shows a row in the Paint list, with a label, showing `default_color` (0xRRGGBB) until the player picks a color.
 pub(crate) fn claim(row: usize, label: &str, default_color: u32) {
     let default_color = swap_red_blue(default_color) | ALPHA_MASK;
-    set_settings(row, Row { label: leak_utf16(label), default_color, choices: &[], default_choice: 0 });
+    set_settings(row, Row { label: leak_utf16(label), default_color, choices: &[], default_choice: 0, choices_title: &[0], second_color: None });
 }
 
 /// Gives a claimed row a list of choices next to its color: confirming the row then opens the game's Color /
 /// Material panel, whose Material menu lists them. `default_choice` is the one a row starts on. The regulation must
 /// have a material per choice (see MAX_CHOICES).
-pub(crate) fn set_choices(row: usize, labels: &[&str], default_choice: u32) {
+pub(crate) fn set_choices(row: usize, title: &str, labels: &[&str], default_choice: u32) {
     let Some(&old) = settings(row) else { return };
-    assert!(!labels.is_empty() && labels.len() <= MAX_CHOICES && (default_choice as usize) < labels.len());
+    assert!(!labels.is_empty() && labels.len() <= u8::MAX as usize && (default_choice as usize) < labels.len());
     let choices = labels.iter().map(|label| leak_utf16(label)).collect::<Vec<_>>().leak();
-    set_settings(row, Row { choices, default_choice, ..old });
+    set_settings(row, Row { choices, default_choice, choices_title: leak_utf16(title), ..old });
 }
 
-/// The material of a row's first choice.
-fn first_material(row: usize) -> u32 {
-    FIRST_MATERIAL + row as u32 * MATERIALS_SPACING
+/// Gives a row with choices a second color, `label` in its panel, showing `default_color` (0xRRGGBB) until picked.
+pub(crate) fn set_second_color(row: usize, label: &str, default_color: u32) {
+    let Some(&old) = settings(row) else { return };
+    let default_color = swap_red_blue(default_color) | ALPHA_MASK;
+    set_settings(row, Row { second_color: Some((leak_utf16(label), default_color)), ..old });
 }
 
-/// The text of the choice a material is, if it's one.
-fn choice_text(material: u32) -> Option<&'static [u16]> {
-    claimed_rows().find_map(|row| {
-        let index = material.checked_sub(first_material(row))?;
-        settings(row)?.choices.get(index as usize).copied()
-    })
+// What the panel's own entries need (panel.rs).
+
+/// The row with choices whose slot this is.
+pub(crate) fn row_with_choices(slot: u8) -> Option<usize> {
+    choices_row_of(slot).map(|(row, _)| row)
+}
+
+/// A row's choices' name and labels.
+pub(crate) fn choices_of(row: usize) -> (&'static [u16], &'static [&'static [u16]]) {
+    settings(row).map(|s| (s.choices_title, s.choices)).unwrap_or((&[0], &[]))
+}
+
+/// A row's choice in a paint block (the edit context's working one), as an index.
+pub(crate) unsafe fn stored_choice(paint: usize, row: usize) -> u32 {
+    let Some(settings) = settings(row) else { return 0 };
+    shown_choice(settings, unsafe { *((paint + choice_offset(row)) as *const u16) })
+}
+
+/// Stores a row's choice in a paint block, marked as picked.
+pub(crate) unsafe fn store_choice(paint: usize, row: usize, index: u32) {
+    unsafe { *((paint + choice_offset(row)) as *mut u16) = PICKED_CHOICE | index as u16 };
 }
 
 fn color_offset(row: usize) -> usize {
@@ -236,7 +292,13 @@ fn range(slot: &'static u8) -> SlotRange {
 }
 
 #[repr(C, align(16))]
-struct Label([usize; 8]);
+pub(crate) struct Label([usize; 8]);
+
+impl Label {
+    pub(crate) fn new() -> Self {
+        Label([0; 8])
+    }
+}
 
 #[repr(C)]
 struct TextId {
@@ -245,7 +307,7 @@ struct TextId {
 }
 
 /// Constructs a label with our text in `out`.
-unsafe fn make_label(out: *mut Label, text: &'static [u16]) -> *mut Label {
+pub(crate) unsafe fn make_label(out: *mut Label, text: &'static [u16]) -> *mut Label {
     type MakeLabelFn = unsafe extern "system" fn(*mut Label, *const u16, *const TextId) -> *mut Label;
     let make: MakeLabelFn = unsafe { std::mem::transmute(MAKE_LABEL_ADDR) };
     unsafe { make(out, text.as_ptr(), &LABEL_TEXT_ID) }
@@ -440,8 +502,13 @@ unsafe extern "system" fn make_panel_impl(list: usize, out: *mut usize, kind: u3
     let build_panel: BuildPanelFn = unsafe { std::mem::transmute(BUILD_PANEL_ADDR) };
     let add_reference: unsafe extern "system" fn(usize) = unsafe { std::mem::transmute(ADD_REFERENCE_ADDR) };
     let mut argument = PanelArgument([0; 0x80]);
+    crate::panel::building_panel();
     unsafe {
-        let argument = copy_panel_argument(&mut argument, list + LIST_PANEL_ARGUMENT_OFFSET);
+        let argument = if slot == device::SLOT {
+            copy_panel_argument(&mut argument, list + LIST_PANEL_ARGUMENT_OFFSET)
+        } else {
+            find_rows_panel(*(list as *const usize), &mut argument)
+        };
         let panel = build_panel(argument, list + LIST_PANEL_OWNER_OFFSET, slot);
         *out = panel;
         if panel != 0 {
@@ -451,42 +518,34 @@ unsafe extern "system" fn make_panel_impl(list: usize, out: *mut usize, kind: u3
     out
 }
 
-unsafe extern "system" fn first_material_impl(slot: *const u8) -> u32 {
-    match choices_row_of(unsafe { *slot }) {
-        Some((row, _)) => first_material(row),
-        None => unsafe { orig::<unsafe extern "system" fn(*const u8) -> u32>(&ORIG_FIRST_MATERIAL)(slot) },
-    }
+type FindClipFn = unsafe extern "system" fn(usize, *mut PanelArgument, *const std::ffi::c_char) -> *mut PanelArgument;
+
+/// Looks the extra rows' panel up in the Paint screen's movie, into `out` (to be destroyed by whoever gets it).
+unsafe fn find_rows_panel(screen: usize, out: *mut PanelArgument) -> *mut PanelArgument {
+    let find_clip: FindClipFn = unsafe { std::mem::transmute(FIND_CLIP_ADDR) };
+    unsafe { find_clip(screen + SCREEN_MAIN_CONTENT_OFFSET, out, ROWS_PANEL_NAME.as_ptr()) }
 }
 
-unsafe extern "system" fn read_material_impl(paint: usize, parts: *const SlotRange, slot: u8) -> u16 {
-    let Some((row, settings)) = choices_row_of(slot) else {
-        type ReadMaterialFn = unsafe extern "system" fn(usize, *const SlotRange, u8) -> u16;
-        return unsafe { orig::<ReadMaterialFn>(&ORIG_READ_MATERIAL)(paint, parts, slot) };
-    };
-    // Six materials per section too: a row's choice is in the row's section, as its index.
-    let stored = unsafe { *((paint + choice_offset(row)) as *const u16) };
-    (first_material(row) + shown_choice(settings, stored)) as u16
-}
+type SetUpPanelsFn = unsafe extern "system" fn(usize, usize, usize, usize) -> usize;
 
-type WriteMaterialsFn = unsafe extern "system" fn(usize, *const SlotRange, u8, u16);
-
-unsafe extern "system" fn write_materials_impl(paint: usize, parts: *const SlotRange, slot: u8, material: u16) {
-    if !SLOTS.contains(&slot) {
-        return unsafe { orig::<WriteMaterialsFn>(&ORIG_WRITE_MATERIALS)(paint, parts, slot, material) };
+unsafe extern "system" fn set_up_panels_impl(list: usize, content: usize, screen: usize, a4: usize) -> usize {
+    let result = unsafe { orig::<SetUpPanelsFn>(&ORIG_SET_UP_PANELS)(list, content, screen, a4) };
+    let set_visible: unsafe extern "system" fn(*mut PanelArgument, u8) = unsafe { std::mem::transmute(SET_VISIBLE_ADDR) };
+    let destroy_value: unsafe extern "system" fn(usize) = unsafe { std::mem::transmute(DESTROY_HANDLE_VALUE_ADDR) };
+    let destroy: unsafe extern "system" fn(*mut PanelArgument) = unsafe { std::mem::transmute(DESTROY_HANDLE_ADDR) };
+    let mut handle = PanelArgument([0; 0x80]);
+    unsafe {
+        let panel = find_rows_panel(screen, &mut handle);
+        set_visible(panel, 0);
+        destroy_value(panel as usize + HANDLE_VALUE_OFFSET);
+        destroy(panel);
     }
-    // To the row's section, marked as picked.
-    if let Some((row, settings)) = row_of(slot) {
-        let index = (material as u32).wrapping_sub(first_material(row));
-        if (index as usize) < settings.choices.len() {
-            let picked = PICKED_CHOICE | index as u16;
-            unsafe { orig::<WriteMaterialsFn>(&ORIG_WRITE_MATERIALS)(paint, &range(&SECTIONS[row]), STORAGE_SLOT, picked) }
-        }
-    }
+    result
 }
 
 unsafe extern "system" fn menu_material_text_impl(info: usize, out: *mut Label) -> *mut Label {
     let material = unsafe { *((info + MATERIAL_INFO_MATERIAL_OFFSET) as *const u32) };
-    let Some(text) = choice_text(material).or_else(|| device::material_text(material)) else {
+    let Some(text) = device::material_text(material) else {
         type MenuMaterialTextFn = unsafe extern "system" fn(usize, *mut Label) -> *mut Label;
         return unsafe { orig::<MenuMaterialTextFn>(&ORIG_MENU_MATERIAL_TEXT)(info, out) };
     };
@@ -494,7 +553,7 @@ unsafe extern "system" fn menu_material_text_impl(info: usize, out: *mut Label) 
 }
 
 unsafe extern "system" fn panel_material_text_impl(out: *mut Label, material: u32) -> *mut Label {
-    let Some(text) = choice_text(material).or_else(|| device::material_text(material)) else {
+    let Some(text) = device::material_text(material) else {
         type PanelMaterialTextFn = unsafe extern "system" fn(*mut Label, u32) -> *mut Label;
         return unsafe { orig::<PanelMaterialTextFn>(&ORIG_PANEL_MATERIAL_TEXT)(out, material) };
     };
@@ -502,8 +561,10 @@ unsafe extern "system" fn panel_material_text_impl(out: *mut Label, material: u3
 }
 
 /// The hooks, for lib.rs's hook table.
-pub(crate) fn hooks() -> [Hook; 14] {
+pub(crate) fn hooks() -> [Hook; 12] {
     [
+        // mov [rsp+10],rdx / mov [rsp+8],rcx
+        (0x140f3fd90, [0x48, 0x89, 0x54, 0x24, 0x10, 0x48], set_up_panels_impl as *const (), &ORIG_SET_UP_PANELS),
         // jmp (the function starts elsewhere)
         (0x140f418d0, [0xe9, 0x83, 0x90, 0x55, 0x05, 0x48], build_rows_impl as *const (), &ORIG_BUILD_ROWS),
         // push rbx / sub rsp,30
@@ -522,12 +583,6 @@ pub(crate) fn hooks() -> [Hook; 14] {
         (0x14045afc0, [0x48, 0x89, 0x5c, 0x24, 0x08, 0x48], write_colors_impl as *const (), &ORIG_WRITE_COLORS),
         // mov rax,rsp / mov [rax+10],rdx
         (0x140f43610, [0x48, 0x8b, 0xc4, 0x48, 0x89, 0x50], make_panel_impl as *const (), &ORIG_MAKE_PANEL),
-        // jmp (the function starts elsewhere)
-        (0x14045da60, [0xe9, 0x11, 0x6b, 0x0c, 0x03, 0xcc], first_material_impl as *const (), &ORIG_FIRST_MATERIAL),
-        // jmp (the function starts elsewhere)
-        (0x14045a980, [0xe9, 0x7c, 0x76, 0x0b, 0x06, 0x48], read_material_impl as *const (), &ORIG_READ_MATERIAL),
-        // mov r11,[rdx+8] / mov rax,[rdx]
-        (0x14045b070, [0x4c, 0x8b, 0x5a, 0x08, 0x48, 0x8b], write_materials_impl as *const (), &ORIG_WRITE_MATERIALS),
         // mov rax,rsp / push rdi / sub rsp,..
         (0x140f35c40, [0x48, 0x8b, 0xc4, 0x57, 0x48, 0x81], menu_material_text_impl as *const (), &ORIG_MENU_MATERIAL_TEXT),
         // push rbp / push rsi / push rdi / sub rsp,..

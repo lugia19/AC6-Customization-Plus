@@ -20,8 +20,8 @@ too: the flames darken what's behind them instead of glowing. The types:
 - **Generator's own** (the default): the flames of the generator you have equipped.
 - **Combustion**, **Current**, **Coral**: the game's three kinds of flame. They differ in shape and detail, not only
   in color: Current has its own flame model, Coral adds sparkles and haze.
-- **The same three as an "ALLMIND fanout"**: five flames per nozzle, fanned out, with extra glow, the way the boss
-  ALLMIND's thrusters are built.
+- **ALLMIND**: the Current flame with the extras of ALLMIND's thrusters: a spray of sparks, a steady light and a
+  flash when a thruster starts.
 
 The exhaust fumes stay as the game has them.
 
@@ -64,11 +64,9 @@ Coming from 0.1.0 (AC6-Thruster-Customization)? The save file has a new name: re
   playing even if it switches.
 - **Flame types.** The game keeps a flame per thruster effect and generator type (combustion, current, Coral): 20
   effects, three flames each. Every wrapper knows its effect's three flames, and on your AC plays the recolored
-  copies of the one for the type you chose (served to the effects as another external value). The "ALLMIND
-  fanout" is an arrangement, not a flame: the boss's own thruster effects are several copies of one ordinary
-  current-type flame, each offset and angled outward, plus a glow and lights. The wrappers place five copies of
-  the chosen type's flame the same way, scaled to an AC's nozzle, with the boss's extras (without its flames)
-  alongside. Long flames (quick boost, assault boost) fan out less, so their ends stay together.
+  copies of the one for the type you chose (served to the effects as another external value). ALLMIND is a boss,
+  not an AC, with thruster effects of its own; its type plays the current flame plus a copy of the boss's effect
+  with the flames taken out.
 - **DEVICE brightness.** Nothing new is added: the game's own material menu already lists the ten light intensity
   materials (90-99) for DEVICE, with their text and live preview, and the value is ordinary paint data. The DEVICE
   row was just built color-only, with no way into that menu. Four hooks build it like the other color rows

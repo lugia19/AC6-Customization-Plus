@@ -3,12 +3,12 @@
 //! 900004-900006 what the subtractive copy removes from the background (both copies play together; see set_channels),
 //! 900007-900009 the plain color, for alpha-blended particles (smoke). Served as 1 + the amount (1..2), so 0 keeps
 //! meaning "no DLL" (the flames' wrappers then play stock). White until the player picks a color.
-//! 900011 is the row's choice, the flame type: 0 the generator's own, 1 combustion, 2 current, 3 Coral, 4-6 the same three as fans of five flames (how the boss ALLMIND's thrusters are built); a flame's wrapper
-//! then plays its effect row's flame for that type.
+//! 900011 is the row's choice, the flame type: 0 the generator's own, 1 combustion, 2 current, 3 Coral, 4 ALLMIND
+//! (current plus the boss's extras); a flame's wrapper then plays its effect row's flame for that type.
 //!
 //! Effects read external values through 0x142b56480, effectively `float *get(value_block, float *out, int id)`.
 //!
-//! A polling thread caches the row's color and flame type for the hook.
+//! A polling thread caches the row's color and flame type for the hook (and keeps the DLL's hooks in place).
 
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 use std::time::Duration;
@@ -20,15 +20,7 @@ const EXT_FIRST_CHANNEL: i32 = 900001;
 const CHANNEL_COUNT: usize = 9;
 const EXT_FLAME_TYPE: i32 = 900011;
 // The row's choices; the index is what 900011 serves. build.py adds as many materials to the regulation.
-const FLAME_TYPES: [&str; 7] = [
-    "Generator's own",
-    "Combustion",
-    "Current",
-    "Coral",
-    "Combustion (ALLMIND fanout)",
-    "Current (ALLMIND fanout)",
-    "Coral (ALLMIND fanout)",
-];
+const FLAME_TYPES: [&str; 5] = ["Generator's own", "Combustion", "Current", "Coral", "ALLMIND"];
 const POLL_INTERVAL: Duration = Duration::from_millis(200);
 
 const DEFAULT_COLOR: u32 = 0xFFFFFF;
@@ -112,6 +104,7 @@ fn poll_loop() {
     let mut last_choice = None;
     loop {
         std::thread::sleep(POLL_INTERVAL);
+        crate::rehook();
         if let Some(choice) = rows::choice(ROW_THRUSTER).filter(|choice| last_choice != Some(*choice)) {
             last_choice = Some(choice);
             FLAME_TYPE.store((choice as f32).to_bits(), Ordering::Relaxed);
@@ -128,7 +121,9 @@ fn poll_loop() {
 
 pub(crate) fn start() {
     rows::claim(ROW_THRUSTER, "THRUSTER", DEFAULT_COLOR);
-    rows::set_choices(ROW_THRUSTER, &FLAME_TYPES, 0);
+    rows::set_choices(ROW_THRUSTER, "Flame type", &FLAME_TYPES, 0);
+    // Not used by the flames yet: meant for the ALLMIND type's assault boost accent.
+    rows::set_second_color(ROW_THRUSTER, "Accent color", DEFAULT_COLOR);
     set_channels(DEFAULT_COLOR);
     std::thread::spawn(poll_loop);
 }

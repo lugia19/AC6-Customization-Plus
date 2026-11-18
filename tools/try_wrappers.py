@@ -1,5 +1,4 @@
-"""Development helper: rebuilds only the flame wrappers (fxr/build_fxrs.mjs, e.g. after changing the ALLMIND fan's
-layout) and reloads them in the running game with an FXR reloader, so a change shows on the next flame that spawns
+"""Development helper: rebuilds only the flame wrappers (fxr/build_fxrs.mjs) and reloads them in the running game with an FXR reloader, so a change shows on the next flame that spawns
 without a restart. Needs a finished build.py run (it uses build/'s unpacked effects and flame rows).
 
     python tools/try_wrappers.py --reloader "<...>/fxr-reloader-cli.exe"

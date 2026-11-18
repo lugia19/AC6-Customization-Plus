@@ -3,12 +3,17 @@
 //!
 //! The answer comes from the slot that drives the flame (docs/ownership.md). Every character
 //! updates its slots each frame as `update(slot, dt, ChrIns** owner)`; the flame-carrying ones keep their effects in a
-//! CSFD4MultiSfxIns. After the original update, the hooks attach 900010 to the slot's wrapper flames: PLAYERS when the
+//! CSFD4MultiSfxIns. After the original update, ours attach 900010 to the slot's wrapper flames: PLAYERS when the
 //! owner is the player's ChrIns, SOMEONE_ELSES otherwise.
+//!
+//! The update is a virtual (vtable + 0x20), and ours replace the vtable entries instead of hooking the functions:
+//! something puts those two functions' original bytes back mid-session (seen after 3 and after 74 minutes, with
+//! every other hook left alone; the flames then all went stock).
 //!
 //! - The two slot classes that carry the flames, with their update and where they keep their SFX object:
 //!   ChrAcThrusterSfxSlot (our name; vtable 0x1438300f0): update 0x140937cc0, SFX object at + 0x60;
-//!   CS::ChrMultiSfxSlot (vtable 0x14382e2b8; continuous flames, the startup flare): update 0x14092bcd0, + 0x70.
+//!   CS::ChrMultiSfxSlot (vtable 0x14382e2b8; continuous flames, the startup flare): update 0x14092bcd0, + 0x70;
+//!   a third class (vtable 0x14382cbc8) shares that update.
 //! - SFX object (vtable 0x143b0fd90): effect handles from [+ 0x88] to [+ 0x90], 0x2E0 bytes each; handle + 8 = the
 //!   effect instance (FXR ID at + 0).
 //! - 0x141625930 `set_value(manager, handle, int id, float value)` packs one value into a block and attaches it to the
@@ -20,9 +25,6 @@
 //! update; the wrapper waits for a nonzero 900010 (up to 0.3 s, then plays stock). Flames spawned outside the slots
 //! aren't tagged and play stock: one pair in the arena intro cutscene (9412021).
 
-use std::sync::atomic::AtomicUsize;
-
-use crate::{Hook, orig};
 
 const EXT_PLAYERS_FLAME: i32 = 900010;
 const SOMEONE_ELSES: f32 = 1.0;
@@ -46,30 +48,47 @@ const HANDLE_SIZE: usize = 0x2e0;
 // More handles than this means the vector isn't what we think it is.
 const MAX_HANDLES: usize = 64;
 
-static ORIG_THRUSTER_UPDATE: AtomicUsize = AtomicUsize::new(0);
-static ORIG_MULTI_UPDATE: AtomicUsize = AtomicUsize::new(0);
+const THRUSTER_UPDATE_ADDR: usize = 0x140937cc0;
+const MULTI_UPDATE_ADDR: usize = 0x14092bcd0;
+// The slot classes' vtable entries for the update: (entry, the game's function, ours).
+const UPDATE_ENTRIES: [(usize, usize, SlotUpdateFn); 3] = [
+    (0x1438300f0 + 0x20, THRUSTER_UPDATE_ADDR, thruster_update_impl),
+    (0x14382e2b8 + 0x20, MULTI_UPDATE_ADDR, multi_update_impl),
+    (0x14382cbc8 + 0x20, MULTI_UPDATE_ADDR, multi_update_impl),
+];
 
 type SlotUpdateFn = unsafe extern "system" fn(usize, f32, *const usize) -> u64;
 type SetValueFn = unsafe extern "system" fn(usize, usize, i32, f32);
 
-/// The two slot update hooks, for lib.rs's hook table.
-pub(crate) fn hooks() -> [Hook; 2] {
-    [
-        // mov rax,rsp / push rbp / push rdi / push r13
-        (0x140937cc0, [0x48, 0x8b, 0xc4, 0x55, 0x57, 0x41], thruster_update_impl as *const (), &ORIG_THRUSTER_UPDATE),
-        // push rbp / push rsi / push rdi / push r12
-        (0x14092bcd0, [0x40, 0x55, 0x56, 0x57, 0x41, 0x54], multi_update_impl as *const (), &ORIG_MULTI_UPDATE),
-    ]
+/// Points the slot classes' update entries at ours.
+pub(crate) fn install() -> Result<(), String> {
+    const PAGE_READWRITE: u32 = 4;
+    for (entry, game_fn, _) in UPDATE_ENTRIES {
+        if unsafe { *(entry as *const usize) } != game_fn {
+            return Err(format!("vtable entry at {entry:#x} isn't the slot update (not 1.09.1?)"));
+        }
+    }
+    for (entry, _, ours) in UPDATE_ENTRIES {
+        let mut old = 0;
+        if unsafe { crate::VirtualProtect(entry as *mut u8, 8, PAGE_READWRITE, &mut old) } == 0 {
+            return Err(format!("can't write the vtable entry at {entry:#x}"));
+        }
+        unsafe { *(entry as *mut usize) = ours as usize };
+        unsafe { crate::VirtualProtect(entry as *mut u8, 8, old, &mut old) };
+    }
+    Ok(())
 }
 
 unsafe extern "system" fn thruster_update_impl(slot: usize, dt: f32, owner: *const usize) -> u64 {
-    let result = unsafe { orig::<SlotUpdateFn>(&ORIG_THRUSTER_UPDATE)(slot, dt, owner) };
+    let game_update: SlotUpdateFn = unsafe { std::mem::transmute(THRUSTER_UPDATE_ADDR) };
+    let result = unsafe { game_update(slot, dt, owner) };
     unsafe { tag_flames(slot + THRUSTER_SLOT_SFX_OFFSET, owner) };
     result
 }
 
 unsafe extern "system" fn multi_update_impl(slot: usize, dt: f32, owner: *const usize) -> u64 {
-    let result = unsafe { orig::<SlotUpdateFn>(&ORIG_MULTI_UPDATE)(slot, dt, owner) };
+    let game_update: SlotUpdateFn = unsafe { std::mem::transmute(MULTI_UPDATE_ADDR) };
+    let result = unsafe { game_update(slot, dt, owner) };
     unsafe { tag_flames(slot + MULTI_SFX_SLOT_SFX_OFFSET, owner) };
     result
 }

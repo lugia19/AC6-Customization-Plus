@@ -128,10 +128,9 @@ def main():
     regulation = shutil.copy(os.path.join(args.game, "regulation.bin"), WORK)
     effects = shutil.copy(os.path.join(args.game, "sfx", "sfxbnd_commoneffects.ffxbnd.dcx"), WORK)
     archives = [regulation, effects]
-    # Only read: ALLMIND's thruster effects, for the fanout flame types' extras (fxr/build_fxrs.mjs).
-    allmind_effects = shutil.copy(os.path.join(args.game, "sfx", "sfxbnd_m30.ffxbnd.dcx"), WORK)
-    sources = [*archives, allmind_effects]
-    witchy(sources, [unpacked(a) for a in sources])
+    # Only read: ALLMIND's thruster effects, for the ALLMIND flame type's extras (fxr/build_fxrs.mjs).
+    allmind = shutil.copy(os.path.join(args.game, "sfx", "sfxbnd_m30.ffxbnd.dcx"), WORK)
+    witchy([*archives, allmind], [unpacked(a) for a in [*archives, allmind]])
 
     params = unpacked(regulation)
     # The generator-dependent effect tables: row = an effect the game spawns, column t (sfxId<t>) = what it uses for
@@ -168,19 +167,20 @@ def main():
     flame_rows_path = os.path.join(WORK, "flame_rows.json")
     json.dump(flame_rows, open(flame_rows_path, "w"))
     subprocess.run(["node", "build_fxrs.mjs", effect_dir, id_map_path, flame_rows_path,
-                    os.path.join(unpacked(allmind_effects), "effect")], cwd=fxr_dir,
+                    os.path.join(unpacked(allmind), "effect")], cwd=fxr_dir,
                    check=True, shell=shell)
     id_map = json.load(open(id_map_path))
     wrapper_of = {int(stock): wrapper for stock, wrapper in id_map["wrappers"].items()}
     # The copies use their sources' textures and models. WitchyBND would generate empty resource lists for them (fine
     # for the wrappers, which only hold proxies).
     reslists = os.path.join(unpacked(effects), "ResourceList")
-    allmind_reslists = os.path.join(unpacked(allmind_effects), "ResourceList")
-    for source_dir, copies in [(reslists, id_map["resources"]), (allmind_reslists, id_map["allmindResources"])]:
-        for new_id, source_id in copies.items():
-            target = os.path.join(reslists, f"f{int(new_id):09d}.ffxreslist")
-            assert not os.path.exists(target), f"{new_id} collides with an existing effect"
-            shutil.copy(os.path.join(source_dir, f"f{source_id:09d}.ffxreslist"), target)
+    for new_id, source_id in id_map["resources"].items():
+        target = os.path.join(reslists, f"f{int(new_id):09d}.ffxreslist")
+        assert not os.path.exists(target), f"{new_id} collides with an existing effect"
+        source = f"f{source_id:09d}.ffxreslist"
+        if not os.path.exists(os.path.join(reslists, source)):
+            source = os.path.join(unpacked(allmind), "ResourceList", source)
+        shutil.copy(os.path.join(reslists, source), target)
 
     # Params: each custom type t+3 uses what stock type t uses, as its wrapper in the thruster table and unchanged in
     # the replace table (or a Coral generator would fall back to the non-Coral versions), and every player generator
@@ -205,16 +205,10 @@ def main():
     generators.save()
     print(f"{switched} player generators switched to their custom flames")
 
-    # The extra Paint rows' choices are listed as materials, which have to exist: row 0 (THRUSTER) has "generator's
-    # own" and the wrappers' flame types (dll/src/thrusters.rs FLAME_TYPES), row 1 (HUD) eleven (dll/src/hud.rs
-    # OPACITIES).
+    # The THRUSTER row's choices (dll/src/thrusters.rs FLAME_TYPES): "generator's own" and the wrappers' flame types.
     flame_types = 1 + id_map["flameTypes"]
     labels = re.search(r"const FLAME_TYPES: \[&str; (\d+)\]", open(os.path.join(ROOT, "dll", "src", "thrusters.rs")).read())
     assert int(labels.group(1)) == flame_types, f"thrusters.rs names {labels.group(1)} flame types, the wrappers have {flame_types}"
-    add_materials = os.path.join(ROOT, "tools", "add_choice_materials.py")
-    for row, choices in [(0, flame_types), (1, 11)]:
-        subprocess.run([sys.executable, add_materials, os.path.join(params, "PlayerMaterialPresetParam.param"),
-                        str(row), str(choices)], check=True)
 
     witchy([unpacked(a) for a in archives], archives)
 

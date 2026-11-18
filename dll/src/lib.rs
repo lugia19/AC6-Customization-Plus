@@ -8,9 +8,9 @@
 //! Hooks:
 //! - 14 Paint screen functions, in rows.rs.
 //! - 0x142b56480 FXR external value read: serves the color to the flames, in thrusters.rs.
-//! - 0x140937cc0 / 0x14092bcd0 the two flame-carrying slot updates: whether a flame is the player's, in
-//!   player_flames.rs.
 //! - 0x141609040 menu movie lookup and 0x1415f40b0 the Scaleform file opener: the HUD's look, in hud.rs.
+//! Plus the two flame-carrying slot updates, replaced in their classes' vtables: whether a flame is the player's, in
+//! player_flames.rs.
 //!
 //! Logs to Game\debug-logs\customization_plus.log.
 
@@ -19,6 +19,7 @@ mod hud;
 mod hud_movie;
 mod paint_data;
 mod player_flames;
+mod panel;
 mod rows;
 mod thrusters;
 
@@ -30,6 +31,8 @@ use std::sync::{Mutex, OnceLock};
 use retour::RawDetour;
 
 static LOG: OnceLock<Mutex<File>> = OnceLock::new();
+// Each hook's address and its first bytes once hooked (the jump to our detour), for rehook().
+static HOOKED: OnceLock<Vec<(usize, [u8; 6])>> = OnceLock::new();
 
 pub(crate) fn log(msg: &str) {
     if let Some(mut f) = LOG.get().and_then(|l| l.lock().ok()) {
@@ -38,6 +41,7 @@ pub(crate) fn log(msg: &str) {
 }
 
 unsafe extern "system" {
+    fn VirtualProtect(address: *mut u8, size: usize, protect: u32, old_protect: *mut u32) -> i32;
     fn GetCurrentProcess() -> isize;
     fn ReadProcessMemory(process: isize, address: usize, buffer: *mut u8, size: usize, read: *mut usize) -> i32;
 }
@@ -60,9 +64,9 @@ pub(crate) type Hook = (usize, [u8; 6], *const (), &'static AtomicUsize);
 
 fn install() -> Result<(), String> {
     let mut hooks: Vec<Hook> = vec![thrusters::hook()];
-    hooks.extend(player_flames::hooks());
     hooks.extend(rows::hooks());
     hooks.extend(hud::hooks());
+    hooks.extend(panel::hooks());
     for &(addr, bytes, _, _) in &hooks {
         let actual = unsafe { std::slice::from_raw_parts(addr as *const u8, bytes.len()) };
         // A jmp means another DLL hooked it first; the detours chain fine.
@@ -70,6 +74,7 @@ fn install() -> Result<(), String> {
             return Err(format!("prologue at {addr:#x} doesn't match (not 1.09.1?)"));
         }
     }
+    let targets: Vec<usize> = hooks.iter().map(|hook| hook.0).collect();
     let mut detours = Vec::new();
     for (target, _, detour, trampoline) in hooks {
         let d = unsafe { RawDetour::new(target as *const (), detour) }.map_err(|e| e.to_string())?;
@@ -79,9 +84,27 @@ fn install() -> Result<(), String> {
     for d in &detours {
         unsafe { d.enable() }.map_err(|e| e.to_string())?;
     }
+    let _ = HOOKED.set(targets.iter().map(|&addr| (addr, unsafe { *(addr as *const [u8; 6]) })).collect());
     // Hooks stay installed for the life of the process.
     std::mem::forget(detours);
-    Ok(())
+    player_flames::install()
+}
+
+/// Puts back any hook whose bytes changed: the game's Arxan protection restores code it guards to its original bytes
+/// at irregular times (seen on two functions, minutes to over an hour into a session), which silently removes a hook.
+pub(crate) fn rehook() {
+    const PAGE_EXECUTE_READWRITE: u32 = 0x40;
+    for &(addr, hooked) in HOOKED.get().into_iter().flatten() {
+        if unsafe { *(addr as *const [u8; 6]) } == hooked {
+            continue;
+        }
+        let mut old = 0;
+        if unsafe { VirtualProtect(addr as *mut u8, hooked.len(), PAGE_EXECUTE_READWRITE, &mut old) } != 0 {
+            unsafe { *(addr as *mut [u8; 6]) = hooked };
+            unsafe { VirtualProtect(addr as *mut u8, hooked.len(), old, &mut old) };
+        }
+        log(&format!("the hook at {addr:#x} was removed: put back"));
+    }
 }
 
 fn init() {

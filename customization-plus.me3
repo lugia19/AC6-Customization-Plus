@@ -6,6 +6,10 @@ profileVersion = "v1"
 # Modded play uses its own save: me3 copies the real save to this file on first launch and never touches the original.
 savefile = "CustomizationPlus.sl2"
 
+# The game's Arxan protection puts back code it guards, which silently removes hooks mid-session (it took the
+# player's flames back to stock). me3 neutralizes it.
+disable_arxan = true
+
 [[supports]]
 game = "armoredcore6"
 
