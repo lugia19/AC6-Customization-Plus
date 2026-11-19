@@ -90,7 +90,7 @@ impl Entry {
     }
 
     fn choices(&self) -> (&'static [u16], Vec<&'static [u16]>) {
-        rows::choices(self.row)
+        rows::choices(self.row).unwrap_or((&[0], Vec::new()))
     }
 
     unsafe fn choice(&self) -> usize {
@@ -130,7 +130,7 @@ fn child_windows(a3: usize) -> Option<usize> {
 
 // ---- colors ----------------------------------------------------------------------------------------------------------
 
-/// The swatch and "R: G: B:" text. The clip's "Camouflage" (the paint pattern drawn over the swatch) is hidden.
+/// The swatch and "R: G: B:" text, with no pattern over the swatch.
 unsafe extern "system" fn color_refresh(this: *const Closure<Entry>, clip: usize) {
     let entry = unsafe { (*this).captures };
     let color = unsafe { entry.color() };
@@ -143,7 +143,7 @@ unsafe extern "system" fn color_refresh(this: *const Closure<Entry>, clip: usize
         if !tile {
             with_clip(clip, c"Color", |swatch| swatch.set_color(color));
         }
-        with_clip(clip, c"Camouflage", |pattern| pattern.set_visible(false));
+        ui::show_no_pattern(clip, *((entry.context() + EDIT_CONTEXT_CATEGORY_OFFSET) as *const u8));
         with_clip(clip, c"Value_0", |value| value.set_text(text.as_ptr()));
     }
 }
@@ -310,7 +310,9 @@ pub(crate) unsafe fn build(list: usize, row: Option<usize>) -> usize {
         match row {
             Some(row) => {
                 add(&mut description, color_label.set_game_text(COLOR_TEXT), &COLOR_CONFIRM, &COLOR_REFRESH, 0);
-                add(&mut description, choices_label.set(entry.choices().0), &CHOICE_CONFIRM, &CHOICE_REFRESH, 0);
+                if let Some((title, _)) = rows::choices(row) {
+                    add(&mut description, choices_label.set(title), &CHOICE_CONFIRM, &CHOICE_REFRESH, 0);
+                }
                 if rows::has_second_color(row) {
                     let mut label = Label::new();
                     add(&mut description, label.set(rows::color_label(row, 1)), &COLOR_CONFIRM, &COLOR_REFRESH, 1);

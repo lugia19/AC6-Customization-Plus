@@ -46,34 +46,38 @@ material)` in the panel.
 
 ## The extra rows
 
-Rows with slots 9, 10, 11 (not 0-8: those are the kinds above), built by the game's own loop.
+Items of ours, appended to the list the game's row builder made, after WEATHERING. No made-up slots: nothing in the
+game is asked about them (research: `AC6_tools\Research\paint-popup\wide3\report_main_list.md`).
 
-- **Building.** The builder is called at `0x140f418d0` (Arxan moved its first instructions elsewhere and split its
-  body with jumps, so Ghidra has no function there, but it is entered and left like any other); a hook on it marks
-  when it's running. Inside it, the hook on the slot list adds the claimed rows' slots, so the loop makes a row for
-  each, right after DEVICE. Only there: other code fills six-color arrays from that list, and nothing else asks
-  for it while the builder runs. `0x14045de80` says an extra slot is normal
-  if its row has choices: such a row gets the panel, the others are color-only.
-- **Moving.** The builder ends by handing its list to `0x140d3cb00(list, ...)`, which copies it into the list
-  widget (so moving rows after the builder returns would be too late). The hook on that function, when the builder
-  is running and the list is the Paint list as built (the extra rows' kinds where the loop put them), first moves
-  the extra rows after WEATHERING, the way the row vector moves rows when it grows: copy-construct (`0x140c81610`)
-  at the new place, destroy (`0x140c82e00`) the old one.
-- **Label.** `0x14045dc40` normally returns text 210111 + slot; the builder and the color picker's header both ask
-  it. For an extra slot the hook returns the row's label. The game makes a label with its text lookup
-  (`0x140cae6e0`): it finds the text for an ID in the message files, then builds the label from it with
-  `0x140cb2970(out, text, text ID)`. The hook calls that second function with the row's own text, so no
-  message file is involved. A label holds the text's address, not a copy (the game's point into its message data),
-  so the DLL keeps every text allocated forever; a freed text shows as three placeholder blocks.
-- **Editing.** `0x140f40d10` returns the row's own slot for its kind.
-- **Panel.** The switch in `0x140f43610` has no case for an extra row's kind; for a row with choices the hook
-  returns a panel `dll/src/panel.rs` builds (below), with a reference added for the list as the cases do.
-- **Color.** Under the edit context's get and set (`0x140e0c960`, called every frame per swatch, and `0x140e0d030`),
-  which turn the selected part category into its sections, are the paint data's own color reader and writer:
-  `0x14045a7f0(paint, out, sections, slot)` and `0x14045afc0(paint, sections, slot, color)`. Those two are hooked:
-  for an extra slot they use the row's storage instead of the given sections, whichever category is selected. An
-  extra slot never goes through as is (sections only have six colors, a seventh would land in the pattern bytes).
-  The reader is what the row's swatch in the list uses; the panel reads and writes the row's storage itself.
+- **When.** The builder is called at `0x140f418d0(out, screen, &edit context, ...)` (Arxan moved its first
+  instructions elsewhere and split its body with jumps, so Ghidra has no function there, but it is entered and left
+  like any other); a hook on it keeps the edit context while it runs. The builder ends by handing its description to
+  `0x140d3cb00(description, ...)`, which copies it into the list widget; the hook on that, while the builder runs
+  and the description is the Paint list as built (9 rows, WEATHERING last), appends ours.
+- **An item** is what the builder makes for a color row: a row from the label (`0x140d92d80`), appended with
+  `0x140d3c600`, then:
+  - kind (+0x98): 9, 10, 11, past the stock ones (0-5 slots, 6 COLOR SET, 7 PATTERN, 8 WEATHERING). Only the panel
+    switch and the change checks read it; the edited-slots function gives unknown kinds an empty range, as it does
+    PATTERN and WEATHERING.
+  - refresh (+0x1b8): the swatch from the edit context's working paint block (so it follows the picker), and
+    `Camouflage` set to "no pattern" (below). Its closure captures the edit context with a reference held, as the
+    stock row refresh's `{ctx, slot}` does (`0x140f3f3a0`).
+  - on-confirm (+0xf8): what a stock color row's returns (`0x143986608`, which captures nothing): a job, on the window
+    the confirm is called with (the Paint screen), that plays the confirm sound, shows the panel's cursor and pushes
+    the current panel (`screen + 0x2758`) on the child windows (`0x140f43500` -> `0x140f43d90`).
+  - flags (+0x300) |= 8, as the builder does to every row that opens a panel (`0x140f41f20`): the list then greys out
+    around the row while its panel has the focus (the grey-out is in the per-clip fill, `0x14100e4da..e50d`).
+- **Label.** The game makes a label with its text lookup (`0x140cae6e0`): it finds the text for an ID in the message
+  files, then builds the label with `0x140cb2970(out, text, text ID)`. We call that second function with the row's
+  own text, so no message file is involved. A label holds the text's address, not a copy, so the DLL keeps every text
+  allocated forever; a freed text shows as three placeholder blocks.
+- **Panel.** The switch in `0x140f43610` has no case for our kinds; the hook returns a panel `dll/src/panel.rs`
+  builds (below), with a reference added for the list as the cases do.
+- **Refreshes run every update.** The list's per-clip fill (`0x14100e240`: label, then the refresh, on the stored
+  item) runs when the window's `+0xc6d` is set; the Paint screen's update sets it every update (`0x140f42faa`).
+- **The pattern overlay.** A swatch's `Camouflage` clip is never hidden: a hidden one broke the pattern thumbnails and
+  overlays of the whole Paint screen. It is set the way the game does for a slot the pattern can't apply to
+  (`0x140e0c660` answers 0 -> `0x140f452f0(clip, category, &0)`: its "no pattern" frame).
 
 ## The panels
 
@@ -85,14 +89,14 @@ constructs the panel object on a panel clip (`0x140f47160(panel, clip handle, de
 
 | Entry | Refresh | On confirm |
 |---|---|---|
-| Color | the swatch (`Color/Tile`, else `Color` itself, as the game's Color entry does; panel items have no Tile) and the RGB text; hides `Camouflage` (the pattern overlay) | the game's color picker `0x140f37450(screen, out, a3 + 0x10, title, color, on-color)` with our title and callback |
+| Color | the swatch (`Color/Tile`, else `Color` itself, as the game's Color entry does; panel items have no Tile) and the RGB text; `Camouflage` (the pattern overlay) on "no pattern" | the game's color picker `0x140f37450(screen, out, a3 + 0x10, title, color, on-color)` with our title and callback |
 | A choice (Flame type, Opacity) | the choice's name in `Value_0`; the material icon hidden | an option list (the game's `01_070_CommandList`, as the pattern's Size does) |
 | Second color (Accent color, Warning color) | as Color | as Color |
 
-- **Screens.** The panel state (`list`) holds two: `list[0]` is the Paint list's (its movie clips, MainContent at
-  + 0x1da0; no edit context), and the owner (`list + 8`) gives the one the entries use through its virtual 2 (the
-  edit context at + 0x440: category + 0x28, working paint block + 0x40). The game's own entries get that same
-  object.
+- **Screens.** The panel state (`list`, the Paint screen + 0x2618) starts with the Paint screen (`list[0]`: its
+  movie clips, MainContent at + 0x1da0, the edit context pointer at + 0x2600; set by the setup `0x140f3fd90`), and
+  the owner (`list + 8`) gives the object the entries use through its virtual 2 (the edit context pointer at
+  + 0x440; category + 0x28, working paint block + 0x40). The game's own entries get that same object.
 - **a3.** An on-confirm's third argument is the panel window; + 0x10 is its child window stack, where the picker or
   list is pushed (as the game's entries pass it).
 - **Option lists.** A description per open (title, one item per option, the current one selected), then the jobs as
@@ -185,6 +189,10 @@ never show a hidden child again (a hidden material icon stayed hidden in every p
 ## Notes
 
 Dropped or parked:
+- Rows as made-up color slots (9-11) built by the game's own loop: hooks on the slot list (only inside the builder:
+  other code fills six-entry arrays from it), is-normal-slot, the slot label, the edited slots, the paint color reader
+  and writer (a seventh color would land in the pattern bytes), and the rows moved after WEATHERING by copy and
+  destroy. Replaced by our own items, which need none of that.
 - Choices as materials: a row's choices were materials added to the regulation (from ID 200 per row), listed by the
   stock material menu through hooks on the first material, the material reader and writer and both material text
   functions, and the panel came from the game's builder for the row's made-up slot. Replaced by the panel's own

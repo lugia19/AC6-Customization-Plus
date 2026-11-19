@@ -7,7 +7,7 @@
 //! - device.rs: DEVICE's brightness.
 //!
 //! Hooks:
-//! - 9 Paint list functions, in rows.rs; the panels' setup, in panel.rs.
+//! - 4 Paint list functions, in rows.rs; the panels' setup, in panel.rs.
 //! - 0x142b56480 FXR external value read: serves the color to the flames, in thrusters.rs.
 //! - 0x141609040 menu movie lookup and 0x1415f40b0 the Scaleform file opener: the HUD's look, in hud.rs.
 //! Plus the two flame-carrying slot updates, replaced in their classes' vtables: whether a flame is the player's, in

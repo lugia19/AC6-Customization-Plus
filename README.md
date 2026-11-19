@@ -54,9 +54,9 @@ Coming from 0.1.0 (AC6-Thruster-Customization)? The save file has a new name: re
 
 ## How it works
 
-- **Paint rows.** The rows are extra color slots that the game's own row builder is made to build
-  (`dll/src/rows.rs`), shown by clips added to the Paint movie (`tools/build_gfx.py` patches
-  `menu/02_coloring.gfx`). Their panels are built by the DLL from the game's own menu pieces (`dll/src/panel.rs`):
+- **Paint rows.** The rows are list items the DLL adds to the list the game's row builder made, built the way the
+  game builds its own color rows (`dll/src/rows.rs`), shown by clips added to the Paint movie (`tools/build_gfx.py`
+  patches `menu/02_coloring.gfx`). Their panels are built by the DLL from the game's own menu pieces (`dll/src/panel.rs`):
   the game's color picker, and option lists like the pattern's Size. A row keeps its colors and choice in a part of
   the AC's paint data the game never uses, which is why a row is one value for the whole AC and not per part.
   Details: [docs/paint-rows.md](docs/paint-rows.md).

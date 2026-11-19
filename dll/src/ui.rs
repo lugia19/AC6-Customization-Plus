@@ -142,6 +142,15 @@ pub(crate) unsafe fn destroy_handle(handle: usize) {
     }
 }
 
+/// A swatch's "Camouflage" (the paint pattern over it) as "no pattern", for the selected part category: what the
+/// game's swatch refreshes do for a slot the pattern can't apply to (state 0 from 0x140e0c660 -> 0x140f452f0). Never
+/// hide it: a hidden one broke the pattern thumbnails and overlays of the whole Paint screen.
+pub(crate) unsafe fn show_no_pattern(swatch_clip: usize, category: u8) {
+    let set: unsafe extern "system" fn(*mut Handle, u8, *const u8) = unsafe { game_fn(0x140f452f0) };
+    let not_applied = 0u8;
+    unsafe { with_clip(swatch_clip, c"Camouflage", |pattern| set(pattern, category, &not_applied)) };
+}
+
 /// Finds `name` under `parent`, does `act` with it if it exists, destroys the handle.
 pub(crate) unsafe fn with_clip(parent: usize, name: &std::ffi::CStr, act: impl FnOnce(&mut Handle)) {
     let mut handle = Handle::new();
@@ -180,6 +189,36 @@ pub(crate) const fn table<T: Copy + 'static>(call: *const ()) -> FunctionTable {
         closure_delete as *const (),
         closure_get as *const (),
     ])
+}
+
+/// Captures that hold a reference on a reference-counted game object (refcount at + 8), as the game's closures
+/// capturing the edit context do.
+pub(crate) trait HoldsReference {
+    fn referenced(&self) -> usize;
+}
+
+/// The table of a closure holding a reference through its captures: every copy (and move: MSVC deletes the source
+/// after) adds one, delete releases one. Whoever makes the first closure adds its reference (`add_reference`).
+pub(crate) const fn table_holding<T: Copy + HoldsReference + 'static>(call: *const ()) -> FunctionTable {
+    FunctionTable([
+        closure_copy_holding::<T> as *const (),
+        closure_copy_holding::<T> as *const (),
+        call,
+        closure_target_type as *const (),
+        closure_delete_holding::<T> as *const (),
+        closure_get as *const (),
+    ])
+}
+
+unsafe extern "system" fn closure_copy_holding<T: Copy + HoldsReference + 'static>(this: *const Closure<T>, to: *mut Closure<T>) -> *mut Closure<T> {
+    unsafe {
+        add_reference((*this).captures.referenced());
+        closure_copy(this, to)
+    }
+}
+
+unsafe extern "system" fn closure_delete_holding<T: Copy + HoldsReference + 'static>(this: *const Closure<T>, _deallocate: u8) {
+    unsafe { release((*this).captures.referenced()) };
 }
 
 unsafe extern "system" fn closure_copy<T: Copy + 'static>(this: *const Closure<T>, to: *mut Closure<T>) -> *mut Closure<T> {
@@ -240,7 +279,7 @@ pub(crate) unsafe fn set_function<T: Copy + 'static>(slot: usize, closure: Closu
     }
 }
 
-// ---- jobs (reference-counted: refcount at + 8) --------------------------------------------------------------------
+// ---- reference-counted objects (jobs, the edit context: refcount at + 8) ------------------------------------------
 
 pub(crate) unsafe fn add_reference(object: usize) {
     let add: unsafe extern "system" fn(usize) = unsafe { game_fn(0x142923570) };
@@ -310,30 +349,36 @@ impl Description {
 
     /// Appends a panel entry (0x140d3c600, as the panel builders do); returns the item.
     pub(crate) unsafe fn add_item(&mut self, label: *mut Label, confirm: *mut Function) -> usize {
-        unsafe { self.append(0x140d3c600, label, confirm) }
+        unsafe { add_item(self.address(), label, confirm) }
     }
 
     /// Appends an option of an option list (0x140c847e0, as the game's own lists do: with 0x140d3c600 confirming
     /// an option leaves the list open); returns the item.
     pub(crate) unsafe fn add_option(&mut self, label: *mut Label, confirm: *mut Function) -> usize {
-        unsafe { self.append(0x140c847e0, label, confirm) }
+        unsafe { append(self.address(), 0x140c847e0, label, confirm) }
     }
+}
 
-    /// 0x140d92d80 makes the label's row (0x88 bytes), `add` appends the item and consumes the function,
-    /// 0x140c82fd0 destroys the row.
-    unsafe fn append(&mut self, add: usize, label: *mut Label, confirm: *mut Function) -> usize {
-        #[repr(C, align(16))]
-        struct Row([u8; 0x90]);
-        let make_row: unsafe extern "system" fn(*mut Row, *mut Label) -> *mut Row = unsafe { game_fn(0x140d92d80) };
-        let append: unsafe extern "system" fn(*mut Description, *mut Row, *mut Function, usize) -> usize = unsafe { game_fn(add) };
-        let destroy_row: unsafe extern "system" fn(*mut Row) = unsafe { game_fn(0x140c82fd0) };
-        let mut row = Row([0; 0x90]);
-        unsafe {
-            make_row(&mut row, label);
-            append(self, &mut row, confirm, 0);
-            destroy_row(&mut row);
-            *((self.address() + DESCRIPTION_ITEMS_END_OFFSET) as *const usize) - ITEM_SIZE
-        }
+/// Appends an entry to a description the game made (as its row builder and panel builders do, 0x140d3c600);
+/// returns the item.
+pub(crate) unsafe fn add_item(description: usize, label: *mut Label, confirm: *mut Function) -> usize {
+    unsafe { append(description, 0x140d3c600, label, confirm) }
+}
+
+/// 0x140d92d80 makes the label's row (0x88 bytes), `add` appends the item and consumes the function, 0x140c82fd0
+/// destroys the row.
+unsafe fn append(description: usize, add: usize, label: *mut Label, confirm: *mut Function) -> usize {
+    #[repr(C, align(16))]
+    struct Row([u8; 0x90]);
+    let make_row: unsafe extern "system" fn(*mut Row, *mut Label) -> *mut Row = unsafe { game_fn(0x140d92d80) };
+    let append: unsafe extern "system" fn(usize, *mut Row, *mut Function, usize) -> usize = unsafe { game_fn(add) };
+    let destroy_row: unsafe extern "system" fn(*mut Row) = unsafe { game_fn(0x140c82fd0) };
+    let mut row = Row([0; 0x90]);
+    unsafe {
+        make_row(&mut row, label);
+        append(description, &mut row, confirm, 0);
+        destroy_row(&mut row);
+        *((description + DESCRIPTION_ITEMS_END_OFFSET) as *const usize) - ITEM_SIZE
     }
 }
 
