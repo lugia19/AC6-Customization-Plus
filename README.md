@@ -16,12 +16,13 @@ More to customize in Armored Core VI's Paint screen (1.09.1), saved with each AC
    the whole AC, whichever part tab is open. Confirming a row opens its panel, like MAIN's Color / Material.
 
 **GENERATOR**: a thruster color, an accent color and a flame type. Until you pick a color, it's white. Dark colors work
-too: the flames darken what's behind them instead of glowing. The accent color isn't used yet. The types:
+too: the flames darken what's behind them instead of glowing. The accent color is for the ALLMIND type. The types:
 - **Generator's own** (the default): the flames of the generator you have equipped.
 - **Combustion**, **Current**, **Coral**: the game's three kinds of flame. They differ in shape and detail, not only
   in color: Current has its own flame model, Coral adds sparkles and haze.
-- **ALLMIND**: the Current flame with the extras of ALLMIND's thrusters: a spray of sparks, a steady light and a
-  flash when a thruster starts.
+- **ALLMIND**: two-tone flames in the style of ALLMIND's: every flame starts in the accent color and turns into the
+  thruster color. Boosting adds the boss's spark spray, steady light and start flash, quick boosts are the boss's
+  own, and the held assault boost is the burst of one of its special moves.
 
 The exhaust fumes stay as the game has them.
 
@@ -73,8 +74,10 @@ Coming from 0.1.0 (AC6-Thruster-Customization)? The save file has a new name: re
 - **Flame types.** The game keeps a flame per thruster effect and generator type (combustion, current, Coral): 20
   effects, three flames each. Every wrapper knows its effect's three flames, and on your AC plays the recolored
   copies of the one for the type you chose (served to the effects as another external value). ALLMIND is a boss,
-  not an AC, with thruster effects of its own; its type plays the current flame plus a copy of the boss's effect
-  with the flames taken out.
+  not an AC, with thruster effects of its own; its type plays the current flame or the boss's effects (in
+  `sfxbnd_m30`, scaled down for an AC). Each of those is drawn twice, once in the accent color and once in the
+  thruster color, weighted by the particle's age, and the two add up to the fade (an effect can only multiply in the
+  values the DLL serves, so one particle can't blend two of them; the copies share their random seeds, so they line up).
 - **DEVICE brightness.** Nothing new is added: the game's own material menu already lists the ten light intensity
   materials (90-99) for DEVICE, with their text and live preview, and the value is ordinary paint data. The DEVICE
   row was just built color-only, with no way into that menu. The row hooks build it like the other color rows,

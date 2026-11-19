@@ -9,8 +9,8 @@
 //     color, which they can show as is;
 //   - remove: the additive particles again, subtracting what the color lacks from the background, so dark colors
 //     darken it (additive flames can't get darker than what's behind them). Nothing for bright colors.
-// A fourth flame type, ALLMIND, plays the boss's own effects on some rows (ALLMIND), in the thruster color or the
-// accent color (a second set of external values and copies).
+// A fourth flame type, ALLMIND, plays the boss's own effects on some rows (ALLMIND), every flame fading from the accent
+// color to the thruster color (two more pairs of copies; the accent is a second set of external values).
 // Usage: node build_fxrs.mjs <unpacked sfxbnd_commoneffects effect dir> <id map json out> <rows json>
 //        <unpacked sfxbnd_m30 effect dir> [wrappers dir]
 // (rows: a list of [combustion, current, Coral] stock FXR IDs)
@@ -39,9 +39,12 @@ import path from 'node:path'
 
 // The colors the DLL serves (dll/src/thrusters.rs), each as nine external values from `ext`: what the add copy adds,
 // what the remove copy subtracts, the plain color for alpha-blended particles; red, green, blue each, as 1 + a 0..1
-// amount; 0 means no DLL. Each color has its own pair of copies of an effect: [add, remove] ID offsets.
+// amount; 0 means no DLL. Each kind of copy has its own [add, remove] ID offsets.
 const MAIN = { ext: 900001, offsets: [9100000, 9200000] } // the thruster color
-const ACCENT = { ext: 900012, offsets: [9300000, 9400000] }
+// The ALLMIND type's flames fade from the accent color to the thruster color: each is played twice, an accent copy and
+// a thruster color copy, weighted so that the two (additive) add up to the fade.
+const FADING_ACCENT = { ext: 900012, offsets: [9300000, 9400000], accent: true }
+const FADING_MAIN = { ext: 900001, offsets: [9500000, 9600000], accent: false }
 // Whether the flame is on the player's AC (dll/src/player_flames.rs): 0 not known yet (or no DLL), 1 someone else's,
 // 2 the player's.
 const EXT_PLAYERS_FLAME = 900010
@@ -52,17 +55,22 @@ const EXT_FLAME_TYPE = 900011
 const EXT_TERMINATE = 0
 const WRAPPER_OFFSET = 9000000
 
+// How a flame fades: BY_AGE, each particle from the accent at birth to the thruster color at FADE_TIME (seconds);
+// BY_HUE, where the boss's own effect fades from mint to cyan (weighted by how far each color is from mint (1)
+// towards cyan (0)).
+const BY_AGE = 'age'
+const BY_HUE = 'hue'
+const FADE_TIME = 0.15
+const MINT_HUE = 160
+const CYAN_HUE = 190
+
 // ALLMIND (a boss, not an AC) has its own thruster effects, in sfxbnd_m30. The ALLMIND flame type plays, per flame row
-// (its combustion flame's ID, else its first two digits), these effects in these colors ('current' = the row's current
-// flame; FADE = mint fading to cyan in the boss, the accent fading to the thruster color here); rows not listed play
-// their current flame.
-const FADE = 'fade'
+// (its combustion flame's ID, else its first two digits), these effects, faded so ('current' = the row's current
+// flame); rows not listed play their current flame.
 const ALLMIND = {
-  41: [['current', MAIN], [642001, MAIN]], // regular boosting: plus the boss's spark spray, steady light, start flash
-  45: [[642002, MAIN]], // quick boost: the boss's
-  440001: [['current', ACCENT]], // assault boost start
-  440011: [[642142, FADE]], // assault boost, held: the boss's burst from a special move, made continuous
-  440101: [['current', ACCENT]], // assault boost end
+  41: [['current', BY_AGE], [642001, BY_AGE]], // regular boosting: plus the boss's spark spray, steady light, start flash
+  45: [[642002, BY_AGE]], // quick boost: the boss's
+  440011: [[642142, BY_HUE]], // assault boost, held: the boss's burst from a special move, made continuous
 }
 // Made for a boss several times an AC's size: what each of its effects needs on an AC (tuned in game).
 const ALLMIND_CHANGES = {
@@ -72,11 +80,6 @@ const ALLMIND_CHANGES = {
   642142: { scale: 0.3, continuous: true },
 }
 const CURRENT = 1
-
-// FADE effects are played twice: an accent copy and a thruster color copy, weighted by how far each color is from
-// the boss's mint (1) towards its cyan (0), by hue. Additive particles add up to the fade.
-const MINT_HUE = 160
-const CYAN_HUE = 190
 
 // Blend modes that add light: Add, and Unk0 / Unk7 (the library documents both as behaving like Add).
 const ADDITIVE = new Set([BlendMode.Add, BlendMode.Unk0, BlendMode.Unk7])
@@ -148,12 +151,42 @@ function colorsOf(action, key) {
   return colors
 }
 
-// One copy of a FADE effect: every particle's (and light's) brightness scaled by its mint weight (`accent`) or the
-// rest. Per particle, the weight comes from the one color property that changes hue over time if there is one (the
-// fade), else from its first colored one; a particle with no color at all gets half in each copy. Distortion is
-// only in the thruster color copy.
-function weighFade(fxr, accent) {
-  const weigh = color => {
+// The accent's share at a particle age: 1 at birth, 0 from FADE_TIME on (`accent`), or the rest.
+function ageShare(age, accent) {
+  const t = Math.min(1, age / FADE_TIME)
+  return accent ? 1 - t : t
+}
+
+// A color property over particle age, multiplied by the accent's share: resampled as a linear curve at its own
+// keyframes, the fade's and a few in between, keeping its modifiers. Null for a looping one.
+function ageFaded(property, accent) {
+  if (Array.isArray(property)) property = new ConstantProperty(property)
+  if (property.loop) return null
+  const positions = new Set([0, FADE_TIME / 2, FADE_TIME])
+  for (const keyframes of [property.keyframes ?? [], ...(property.components ?? [])]) {
+    for (const { position } of keyframes) positions.add(position)
+  }
+  const end = Math.max(...positions)
+  for (let i = 1; i < 8; i++) positions.add((end * i) / 8)
+  const faded = new LinearProperty(false, [...positions].sort((a, b) => a - b).map(age => {
+    const [r, g, b, a] = property.valueAt(age)
+    const share = ageShare(age, accent)
+    return new Keyframe(age, [r * share, g * share, b * share, a])
+  }))
+  faded.modifiers = [...(property.modifiers ?? [])]
+  return faded
+}
+
+// One copy of a fading effect (`accent`: the accent copy, else the thruster color one), each particle's brightness
+// scaled by the accent's share or the rest:
+// - BY_AGE: over the particle's age, on color1 (particle age on every particle kind);
+// - BY_HUE: by how mint each color is, on the particle's one color property that changes hue over time (the boss's
+//   fade), else its first colored one.
+// Anything else (no usable color, lights, lens flares by age) gets half in each copy. Distortion is only in the
+// thruster color copy.
+function weighFade(fxr, accent, by) {
+  const half = ([r, g, b, a]) => [r / 2, g / 2, b / 2, a]
+  const byHue = color => {
     const w = mintWeight(color)
     return w === null ? color : [...color.slice(0, 3).map(c => c * (accent ? w : 1 - w)), color[3]]
   }
@@ -165,19 +198,27 @@ function weighFade(fxr, accent) {
       continue
     }
     const colored = [appearance, config.particleModifier].filter(Boolean).flatMap(action =>
-      Object.entries(action.$data.props).filter(([key, meta]) => 'color' in meta).map(([key]) => [action, key])
-        .map(([action, key]) => ({ action, key, weights: colorsOf(action, key).map(mintWeight).filter(w => w !== null) }))
-        .filter(({ weights }) => weights.length))
+      Object.entries(action.$data.props).filter(([key, meta]) => 'color' in meta && !('field' in meta))
+        .map(([key]) => ({ action, key, weights: colorsOf(action, key).map(mintWeight).filter(w => w !== null) })))
     if (!appearance.$data.isParticle) { // lights, lens flares: each color their own
-      for (const { action, key } of colored) action.recolorProperty(key, weigh)
+      for (const { action, key } of colored) action.recolorProperty(key, by === BY_HUE ? byHue : half)
       continue
     }
-    const chosen = colored.find(({ weights }) => Math.max(...weights) - Math.min(...weights) > 0.1) ?? colored[0]
+    if (by === BY_AGE && 'color1' in appearance.$data.props) {
+      const faded = ageFaded(appearance.color1, accent)
+      if (faded) {
+        appearance.color1 = faded
+        continue
+      }
+    }
+    const withHue = colored.filter(({ weights }) => weights.length)
+    const chosen = by === BY_HUE &&
+      (withHue.find(({ weights }) => Math.max(...weights) - Math.min(...weights) > 0.1) ?? withHue[0])
     if (chosen) {
-      chosen.action.recolorProperty(chosen.key, weigh)
+      chosen.action.recolorProperty(chosen.key, byHue)
     } else {
       const [target, key] = tintTarget(config)
-      target.recolorProperty(key, ([r, g, b, a]) => [r / 2, g / 2, b / 2, a])
+      target.recolorProperty(key, half)
     }
   }
 }
@@ -229,17 +270,17 @@ function recolor(fxr, remove, color) {
   }
 }
 
-// The ALLMIND type's effects for a row: [effect, color, fade], a FADE effect as both its copies.
+// The ALLMIND type's effects for a row: both fading copies of each, as [effect, copy kind, how it fades].
 function allmindEffects(rowFlames) {
-  const entries = ALLMIND[rowFlames[0]] ?? ALLMIND[Math.floor(rowFlames[0] / 10000)] ?? [['current', MAIN]]
-  return entries.flatMap(([effect, color]) => {
+  const entries = ALLMIND[rowFlames[0]] ?? ALLMIND[Math.floor(rowFlames[0] / 10000)] ?? [['current', BY_AGE]]
+  return entries.flatMap(([effect, by]) => {
     const sfx = effect === 'current' ? rowFlames[CURRENT] : effect
-    return color === FADE ? [[sfx, ACCENT, true], [sfx, MAIN, true]] : [[sfx, color, false]]
+    return [FADING_ACCENT, FADING_MAIN].map(kind => [sfx, kind, by])
   })
 }
 
-// The effects of each flame type for a row, as [effect, color, fade]: the row's flames, then ALLMIND.
-const flameTypes = rowFlames => [...rowFlames.map(flame => [[flame, MAIN, false]]), allmindEffects(rowFlames)]
+// The effects of each flame type for a row, as [effect, copy kind, how it fades]: the row's flames, then ALLMIND.
+const flameTypes = rowFlames => [...rowFlames.map(flame => [[flame, MAIN, null]]), allmindEffects(rowFlames)]
 
 // The wrapper for stock flame `stockId`, which is its row's flame for generator type `ownType`: a child node per effect
 // it can play (a proxy to it). STOCK enables the stock flame; CUSTOM + a type enables both copies of each effect of
@@ -327,15 +368,15 @@ async function save(fxr) {
   await fxr.saveAs(file(fxr.id), Game.ArmoredCore6)
 }
 
-// Every effect a flame type plays, in its color, and everything it references through proxies (same color): one job
-// each, keyed by effect and color, with whether it's a FADE copy.
+// Every effect a flame type plays, as its kind of copy, and everything it references through proxies (same kind): one
+// job each, keyed by effect and kind, with how it fades.
 const jobs = new Map()
 const pending = rows.flatMap(rowFlames => flameTypes(rowFlames).flat())
 while (pending.length) {
   const [sfx, color, fade] = pending.pop()
-  const key = `${sfx}:${color.ext}`
+  const key = `${sfx}:${color.offsets[0]}`
   if (jobs.has(key)) {
-    if (jobs.get(key)[2] !== fade) throw new Error(`${sfx} is wanted both faded and not`)
+    if (jobs.get(key)[2] !== fade) throw new Error(`${sfx} is wanted faded two ways`)
     continue
   }
   jobs.set(key, [sfx, color, fade])
@@ -358,7 +399,7 @@ for (const [sfx, color, fade] of jobs.values()) {
       if (changes.withoutFlames && node.nodes) node.nodes = node.nodes.filter(child => !(child instanceof ProxyNode))
       if (node instanceof ProxyNode) node.sfx += offset
     }
-    if (fade) weighFade(fxr, color === ACCENT)
+    if (fade) weighFade(fxr, color.accent, fade)
     recolor(fxr, index === 1, color)
     fxr.id = sfx + offset
     resources[fxr.id] = sfx
