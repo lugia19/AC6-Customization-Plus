@@ -12,8 +12,8 @@ panel's header, a text field copied from the rows' label field (228) with its ow
 
 The rows panel: the game looks its panels up by name in the content sprite (269) and fills a panel's Item_<n>_0 clips
 with a panel's entries, in order. The Color / Material panel (192) has a color item, a material item and the Paint
-Pattern item (fixed text "Apply"). The extra rows' panel is a copy of it with color, color and material items, under
-its own name (dll/src/panel.rs builds the panel on it).
+Pattern item (fixed text "Apply"). The extra rows' panel is a copy of it with color, color, material and color items,
+under its own name (dll/src/panel.rs builds the panel on it).
 """
 import struct
 import sys
@@ -32,11 +32,15 @@ FIRST_NEW_ROW = 9  # Item_<n>_0
 CONTENT_SPRITE = 269
 STOCK_PANEL_SPRITE = 192
 # The Color / Material panel's items: Item_0_0 color, Item_1_0 material, Item_2_0 Paint Pattern. The rows' panel
-# places color, color, material (dll/src/panel.rs adds a row's color, second color, choices in that order).
+# places color, color, material, color (dll/src/panel.rs adds a row's color, second color, choices, third color in
+# that order).
 PANEL_COLOR_ITEM = 191
 PANEL_MATERIAL_ITEM = 185
 PANEL_PATTERN_ITEM = 178
 ROWS_PANEL_ITEMS = {PANEL_MATERIAL_ITEM: PANEL_COLOR_ITEM, PANEL_PATTERN_ITEM: PANEL_MATERIAL_ITEM}
+# The fourth item: free depth (the stock items use 10, 22, 36), position one item pitch (2280) below Item_2_0.
+ROWS_PANEL_ITEM_3_DEPTH = 48
+ROWS_PANEL_ITEM_3 = (10900, 8940 + 2280)
 ROWS_PANEL_ID = 402
 ROWS_PANEL_NAME = "Color_Material_Color_Select"
 STOCK_PANEL_DEPTH = 118  # the Color / Material panel's in the content sprite
@@ -254,7 +258,8 @@ def row_sprite(stock_row, new_id, row_y, slice_top, texture, header):
 
 
 def rows_panel_sprite(stock_panel):
-    """The Color / Material panel sprite (its tag's content) with its items replaced as ROWS_PANEL_ITEMS says."""
+    """The Color / Material panel sprite (its tag's content) with its items replaced as ROWS_PANEL_ITEMS says, and a
+    fourth item (a color) below them. Its background already reaches past it (sized for the Paint Pattern preview)."""
     body, swapped = b"", 0
     for tag_type, header, _, raw in tags(stock_panel, 4, len(stock_panel)):
         place = raw[header:]
@@ -262,6 +267,9 @@ def rows_panel_sprite(stock_panel):
             new = ROWS_PANEL_ITEMS[struct.unpack_from("<H", place, 3)[0]]
             raw = tag(PLACE_OBJECT2, place[:3] + struct.pack("<H", new) + place[5:])
             swapped += 1
+        if tag_type == SHOW_FRAME:
+            body += tag(PLACE_OBJECT2, bytes([0x26]) + struct.pack("<HH", ROWS_PANEL_ITEM_3_DEPTH, PANEL_COLOR_ITEM)
+                        + matrix(*ROWS_PANEL_ITEM_3) + b"Item_3_0\0")
         body += raw
     assert swapped == len(ROWS_PANEL_ITEMS), "rows panel sprite: an item to replace isn't placed exactly once"
     return tag(DEFINE_SPRITE, struct.pack("<H", ROWS_PANEL_ID) + stock_panel[2:4] + body)

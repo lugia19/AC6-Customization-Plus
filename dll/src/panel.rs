@@ -5,8 +5,8 @@
 //! the job that opens what comes next, a refresh std::function filling the item's clip every frame), made into the
 //! game's panel object (0x140f47160, as the Color / Material builder 0x140f49590 does) on a panel clip. Entry N fills
 //! clip Item_N_0.
-//! - Our rows: their color, a second color, the choices, all ours, on the rows' own panel clip (a copy of the Color /
-//!   Material one with color, color, material items, tools/build_gfx.py).
+//! - Our rows: their color, a second color, the choices, a third color, all ours, on the rows' own panel clip (a copy
+//!   of the Color / Material one with color, color, material, color items, tools/build_gfx.py).
 //! - DEVICE (the game has its brightness, switched off at the row: its material, 90-99, drives how bright the AC's
 //!   lights are): the game's own Color entry, and a Brightness entry doing what the game's Material entry would for its
 //!   slot (the stock material picker; the material text hook labels those materials "Brightness N%"), on the stock
@@ -105,7 +105,7 @@ struct Entry {
     screen: usize,
     /// One of our rows, or DEVICE.
     row: usize,
-    /// A color: which (0 the row's color, 1 its second color). An option: its index.
+    /// A color: which (0 the row's color, 1 and 2 its extra ones). An option: its index.
     value: usize,
 }
 
@@ -349,7 +349,7 @@ pub(crate) unsafe fn build(list: usize, row: Option<usize>) -> usize {
             let item = ui::add_item(description.address(), label, function.set(Entry { value, ..entry }.closure(confirm)));
             ui::set_function(item + ui::ITEM_REFRESH_OFFSET, Entry { value, ..entry }.closure(refresh));
         };
-        let mut labels = [Label::new(), Label::new(), Label::new()];
+        let mut labels = [Label::new(), Label::new(), Label::new(), Label::new()];
         // The panel clip's handle; the constructor gets a copy of it (and keeps that).
         let mut clip = Handle::new();
         match row {
@@ -359,17 +359,21 @@ pub(crate) unsafe fn build(list: usize, row: Option<usize>) -> usize {
                     clip.destroy();
                     return 0;
                 }
-                // In the clip's order: color, color, material (tools/build_gfx.py).
+                // In the clip's order: color, color, material, color (tools/build_gfx.py).
                 let color_header = match rows::color_name(row) {
                     Some(name) => labels[0].set(name),
                     None => labels[0].set_game_text(COLOR_TEXT),
                 };
                 add(&mut description, color_header, &COLOR_CONFIRM, &COLOR_REFRESH, 0);
-                if rows::has_second_color(row) {
+                let colors = rows::extra_color_count(row);
+                if colors >= 1 {
                     add(&mut description, labels[1].set(rows::color_label(row, 1)), &COLOR_CONFIRM, &COLOR_REFRESH, 1);
                 }
                 if let Some((title, _)) = rows::choices(row) {
                     add(&mut description, labels[2].set(title), &CHOICE_CONFIRM, &CHOICE_REFRESH, 0);
+                }
+                if colors >= 2 {
+                    add(&mut description, labels[3].set(rows::color_label(row, 2)), &COLOR_CONFIRM, &COLOR_REFRESH, 2);
                 }
             }
             None => {

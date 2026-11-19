@@ -21,12 +21,12 @@ def main():
     args = parser.parse_args()
 
     effect_dir = os.path.join(WORK, "sfxbnd_commoneffects-ffxbnd-dcx-wffxbnd", "effect")
-    assert os.path.exists(os.path.join(WORK, "flame_rows.json")), "run build.py first: this uses its build/ folder"
+    assert os.path.exists(os.path.join(WORK, "fxr_input.json")), "run build.py first: this uses its build/ folder"
     bundles = os.path.join(WORK, "bundles")
     shutil.rmtree(bundles, ignore_errors=True)
     os.makedirs(bundles)
     subprocess.run(["node", "build_fxrs.mjs", effect_dir, os.path.join(WORK, "id_map.json"),
-                    os.path.join(WORK, "flame_rows.json"),
+                    os.path.join(WORK, "fxr_input.json"),
                     os.path.join(WORK, "sfxbnd_m30-ffxbnd-dcx-wffxbnd", "effect"), bundles],
                    cwd=os.path.join(ROOT, "fxr"), check=True, shell=os.name == "nt")
 

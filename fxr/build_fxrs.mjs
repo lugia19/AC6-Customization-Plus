@@ -12,12 +12,15 @@
 // A fourth flame type, ALLMIND, plays the boss's own effects on some rows (ALLMIND), every flame fading from the accent
 // color to the thruster color (two more pairs of copies; the accent is a second set of external values), in a bundle at
 // the row's current flame + ALLMIND_BUNDLE_OFFSET.
-// Usage: node build_fxrs.mjs <unpacked sfxbnd_commoneffects effect dir> <id map json out> <rows json>
+// Other effects (the core expansions') get the same copies, tinted by the expansion color instead, in a bundle at
+// S + BUNDLE_OFFSET, for every flame type.
+// Usage: node build_fxrs.mjs <unpacked sfxbnd_commoneffects effect dir> <id map json out> <input json>
 //        <unpacked sfxbnd_m30 effect dir> [bundles dir]
-// (rows: a list of [combustion, current, Coral] stock FXR IDs)
-// Writes the new FXRs into the effect dir, and a map {bundles: per row, its bundle per flame type (combustion, current,
-// Coral, ALLMIND), resources: {new id: source id}} (each new FXR needs its source's resource list; bundles only hold
-// proxies).
+// (input: {flames: a list of [combustion, current, Coral] stock FXR IDs, others: a list of stock FXR IDs,
+// neutralModels: {model: the copies' version of it, whose material has no color of its own}})
+// Writes the new FXRs into the effect dir, and a map {bundles: per flame row, its bundle per flame type (combustion,
+// current, Coral, ALLMIND), otherBundles: {stock id: bundle id}, resources: {new id: source id}} (each new FXR needs its
+// source's resource list; bundles only hold proxies).
 // With a bundles dir, only the bundles and the copies of the boss's effects are built, into it, overwriting, and no
 // map: for trying them in the running game with an FXR reloader.
 import {
@@ -42,6 +45,9 @@ import path from 'node:path'
 // what the remove copy subtracts, the plain color for alpha-blended particles; red, green, blue each, as 1 + a 0..1
 // amount; 0 means no DLL. Each kind of copy has its own [add, remove] ID offsets.
 const MAIN = { ext: 900001, offsets: [9100000, 9200000] } // the thruster color
+// The core expansions' effects: the expansion color. Their effects are no flame's, so the same offsets.
+// Greyed by luminance (see recolor), so white is about as bright as the stock effect.
+const EXPANSION = { ext: 900021, offsets: [9100000, 9200000], byLuminance: true }
 // The ALLMIND type's flames fade from the accent color to the thruster color: each is played twice, an accent copy and
 // a thruster color copy, weighted so that the two (additive) add up to the fade.
 const FADING_ACCENT = { ext: 900012, offsets: [9300000, 9400000], accent: true }
@@ -225,22 +231,45 @@ function weighFade(fxr, accent, by) {
 // `remove`: additive particles subtract from the background instead, without bloom. Everything the add copy already
 // draws is hidden: alpha-blended particles (subtracting them would darken their whole quad), lights, lens flares and
 // distortion.
+const luminance = ([r, g, b]) => 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+// The colors a particle multiplies together (its appearance's color1-3 and its modifier's color), at age 0.
+function colorProduct(config) {
+  const at = property => (Array.isArray(property) ? property : property?.valueAt?.(0))
+  const keys = ['color1', 'color2', 'color3'].filter(key => key in config.appearance.$data.props)
+  const factors = [...keys.map(key => at(config.appearance[key])), at(config.particleModifier?.color)].filter(Boolean)
+  return [0, 1, 2].map(channel => factors.reduce((product, factor) => product * factor[channel], 1))
+}
+
 function recolor(fxr, remove, color) {
   const [extAdd, extRemove, extPlain] = [0, 3, 6].map(offset => color.ext + offset)
-  // Every color property: whitened, and tinted for lights (hidden in the remove copy).
+  // byLuminance: each particle's greyed colors are then scaled so that their product has the stock product's luminance
+  // (the product of greyed factors isn't the grey of their product).
+  const particles = [...fxr.root.walkConfigs()].filter(config =>
+    config.appearance?.$data?.isParticle && config.appearance.type !== ActionType.Distortion)
+  const stockLuminance = new Map(color.byLuminance ? particles.map(config => [config, luminance(colorProduct(config))]) : [])
+  // Every color property: whitened (byLuminance: greyed to its luminance), and tinted for lights (hidden in the remove
+  // copy).
+  const grey = color.byLuminance ? ([r, g, b, a]) => [...Array(3).fill(luminance([r, g, b])), a] : whiten
   for (const action of fxr.root.walkActions()) {
     if (!action.$data || !('props' in action.$data) || action.type === ActionType.Distortion) continue
     for (const [key, meta] of Object.entries(action.$data.props)) {
       if (!('color' in meta)) continue
       if (!isLightColor(action, key)) {
-        action.recolorProperty(key, whiten)
+        action.recolorProperty(key, grey)
       } else if (remove) {
         action.recolorProperty(key, () => [0, 0, 0, 0])
       } else {
-        action.recolorProperty(key, whiten)
+        action.recolorProperty(key, grey)
         addTint(action, key, extAdd)
       }
     }
+  }
+  for (const [config, target] of stockLuminance) {
+    const whitened = colorProduct(config)[0]
+    if (!whitened) continue
+    const [action, key] = tintTarget(config)
+    action.recolorProperty(key, ([r, g, b, a]) => [r * target / whitened, g * target / whitened, b * target / whitened, a])
   }
   for (const config of fxr.root.walkConfigs()) {
     const appearance = config.appearance
@@ -302,8 +331,8 @@ function makeContinuous(fxr) {
   }
 }
 
-const [effectDir, idMapPath, rowsPath, allmindDir, bundlesDir] = process.argv.slice(2)
-const rows = JSON.parse(fs.readFileSync(rowsPath, 'utf8'))
+const [effectDir, idMapPath, inputPath, allmindDir, bundlesDir] = process.argv.slice(2)
+const { flames: rows, others, neutralModels } = JSON.parse(fs.readFileSync(inputPath, 'utf8'))
 const fileName = id => `f${String(id).padStart(9, '0')}.fxr`
 const file = id => path.join(effectDir, fileName(id))
 // The boss's effects are in their own archive.
@@ -326,10 +355,11 @@ async function save(fxr) {
 // Every effect a flame type plays, as its kind of copy, and everything it references through proxies (same kind): one
 // job each, keyed by effect and kind, with how it fades.
 const jobs = new Map()
-const pending = rows.flatMap(rowFlames => flameTypes(rowFlames).flat())
+const pending = [...rows.flatMap(rowFlames => flameTypes(rowFlames).flat()), ...others.map(sfx => [sfx, EXPANSION, null])]
 while (pending.length) {
   const [sfx, color, fade] = pending.pop()
   const key = `${sfx}:${color.offsets[0]}`
+  if (jobs.has(key) && jobs.get(key)[1] !== color) throw new Error(`${sfx} is wanted in two colors at the same IDs`)
   if (jobs.has(key)) {
     if (jobs.get(key)[2] !== fade) throw new Error(`${sfx} is wanted faded two ways`)
     continue
@@ -354,6 +384,10 @@ for (const [sfx, color, fade] of jobs.values()) {
       if (changes.withoutFlames && node.nodes) node.nodes = node.nodes.filter(child => !(child instanceof ProxyNode))
       if (node instanceof ProxyNode) node.sfx += offset
     }
+    for (const config of fxr.root.walkConfigs()) {
+      const model = config.appearance?.model?.value ?? config.appearance?.model
+      if (model in neutralModels) config.appearance.model = neutralModels[model]
+    }
     if (fade) weighFade(fxr, color.accent, fade)
     recolor(fxr, index === 1, color)
     fxr.id = sfx + offset
@@ -372,9 +406,14 @@ for (const rowFlames of rows) {
   }
   bundles.push(ids)
 }
+const otherBundles = {}
+for (const sfx of others) {
+  otherBundles[sfx] = sfx + BUNDLE_OFFSET
+  await save(bundle(sfx + BUNDLE_OFFSET, [[sfx, EXPANSION]]))
+}
 if (bundlesDir) {
   console.log(`${saved.size - Object.keys(resources).length} bundles and the boss's effects in ${bundlesDir}`)
 } else {
-  fs.writeFileSync(idMapPath, JSON.stringify({ bundles, resources }, null, 1))
+  fs.writeFileSync(idMapPath, JSON.stringify({ bundles, otherBundles, resources }, null, 1))
   console.log(`${saved.size - Object.keys(resources).length} bundles, ${Object.keys(resources).length} copies (${jobs.size} effect colors)`)
 }

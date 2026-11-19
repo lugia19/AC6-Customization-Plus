@@ -4,6 +4,7 @@ More to customize in Armored Core VI's Paint screen (1.09.1), saved with each AC
 
 - **Thruster color and flame type.** Your AC's thruster flames take the color: boosting, quick boosting, assault
   boosting, all of it. The type picks the flame itself, whatever generator you have.
+- **Expansion color** for Assault Armor, Pulse Armor, Pulse Protection and Terminal Armor.
 - **HUD color, warning color and opacity** for the in-mission HUD.
 - **Light brightness**, a setting the game has but hides.
 
@@ -15,8 +16,10 @@ More to customize in Armored Core VI's Paint screen (1.09.1), saved with each AC
 2. In the garage, Paint: below WEATHERING there's a new panel, ENTIRE AC, with two rows. Each is one setting for
    the whole AC, whichever part tab is open. Confirming a row opens its panel, like MAIN's Color / Material.
 
-**GENERATOR**: a thruster color, an accent color and a flame type. Until you pick a color, it's white. Dark colors work
-too: the flames darken what's behind them instead of glowing. The accent color is for the ALLMIND type. The types:
+**GENERATOR**: a thruster color, an accent color, a flame type and an expansion color. Until you pick a color, it's
+white. Dark colors work too: the flames darken what's behind them instead of glowing. The accent color is for the
+ALLMIND type; the expansion color is your core expansion's (its effects follow the flame type: the Coral type gets the
+Coral version). The types:
 - **Generator's own** (the default): the flames of the generator you have equipped.
 - **Combustion**, **Current**, **Coral**: the game's three kinds of flame. They differ in shape and detail, not only
   in color: Current has its own flame model, Coral adds sparkles and haze.
@@ -54,6 +57,8 @@ Coming from 0.1.0 (AC6-Thruster-Customization)? The save file has a new name: re
   overridden menu files, not this mod (it happens without the DLL too):
   [me3#902](https://github.com/garyttierney/me3/issues/902).
 - The new rows' labels and choices are in English in every language.
+- The package replaces whole game files (`regulation.bin`, the common effects, the material archive, two menu
+  movies), so it doesn't combine with other mods that replace the same ones.
 
 ## How it works
 
@@ -68,8 +73,13 @@ Coming from 0.1.0 (AC6-Thruster-Customization)? The save file has a new name: re
   `fxr/build_fxrs.mjs` that play recolored copies of that type's flame: one adding the color and one subtracting what
   the color lacks (that's what makes dark colors work). Each time a character's thrusters fire, the game asks for its
   generator's color type to pick the column; the DLL hooks that question and answers with your flame type's column
-  for your AC only, so every other AC, even with the same generator, keeps its stock flames. The same column picks the
-  core expansions' effects, which follow the flame type's stock look (a Coral type gets the Coral ones).
+  for your AC only, so every other AC, even with the same generator, keeps its stock flames.
+- **Expansions.** The same column picks the core expansions' effects from a second table, where the regulation points
+  the new columns at recolored copies tinted by the expansion color. Assault Armor's blast is the one exception: it's a
+  bullet's effect, spawned by plain ID, so the DLL also hooks the bullet effect spawn and, for your own bullets only
+  (the bullet knows its owner), looks the ID up in that table too. Some expansion meshes get their color from their
+  material, which a tint can only multiply: the copies use neutral versions of those models, with their material's
+  colors greyed (the package's `material/allmaterial.matbinbnd.dcx` adds those materials).
 - **Flame types.** ALLMIND is a boss, not an AC, with thruster effects of its own; its type plays the current flame
   or the boss's effects (in `sfxbnd_m30`, scaled down for an AC). Each of those is drawn twice, once in the accent color and once in the
   thruster color, weighted by the particle's age, and the two add up to the fade (an effect can only multiply in the

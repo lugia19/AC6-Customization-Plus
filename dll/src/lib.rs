@@ -1,6 +1,6 @@
 //! More to set in the Paint screen (Armored Core VI 1.09.1): rows below WEATHERING, for the whole AC, and the DEVICE
 //! row's hidden brightness setting.
-//! - rows.rs: the extra rows themselves (a color, optionally a choice and a second color; saved with the AC).
+//! - rows.rs: the extra rows themselves (a color, optionally a choice and more colors; saved with the AC).
 //! - panel.rs: the rows' panels, and DEVICE's (its brightness); ui.rs: the game's menu plumbing they use.
 //! - thrusters.rs: the GENERATOR row on the player's thruster flames.
 //! - hud.rs, hud_movie.rs: the HUD row (color, opacity, warning color) on the in-mission HUD.

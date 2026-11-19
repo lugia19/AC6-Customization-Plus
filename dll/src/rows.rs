@@ -1,5 +1,5 @@
 //! The extra rows in the Paint screen's per-part list, after WEATHERING. A row is one value set for the whole AC, never
-//! per part: a color, and optionally a choice from a list and a second color, which its panel (panel.rs) offers. How
+//! per part: a color, and optionally a choice from a list and more colors, which its panel (panel.rs) offers. How
 //! the Paint screen builds its list and panels, and what each hook is for: docs/paint-rows.md. The rows' clips are in
 //! the Paint movie (tools/build_gfx.py; its row count matches ROW_COUNT).
 //!
@@ -27,7 +27,7 @@ const ROW_COUNT: usize = 3;
 // A row's kind is FIRST_KIND + its index: past the stock ones (0-5 the color slots, 6 COLOR SET, 7 PATTERN,
 // 8 WEATHERING).
 const FIRST_KIND: u32 = 9;
-// The paint section a row keeps its values in, whichever part is selected: its colors in colors 0 and 1, its choice
+// The paint section a row keeps its values in, whichever part is selected: its colors in colors 0-2, its choice
 // in material 0. No part uses these sections. Row 0 is on 7 because version 0.1.0 kept the thruster color there.
 static SECTIONS: [u8; ROW_COUNT] = [7, 6, 9];
 // A paint section: its six colors (u32s of RGBA bytes), its six materials (u16s).
@@ -40,6 +40,8 @@ const SECTION_MATERIALS_OFFSET: usize = 0x20;
 /// travels with the color: saved with the AC and carried by designs.
 const PICKED_ALPHA: u32 = 0xFE00_0000;
 const ALPHA_MASK: u32 = 0xFF00_0000;
+// A row's colors at most: its own and two extra.
+const MAX_COLORS: usize = 3;
 /// The same for a stored choice: 0xFE00 + the choice's index (the unused sections hold the default material, 18).
 const PICKED_CHOICE: u16 = 0xFE00;
 const CHOICE_MASK: u16 = 0x00FF;
@@ -49,10 +51,10 @@ struct Row {
     label: &'static [u16],
     /// The color's name in the panel, if not the game's "Color" (the picker's title then; else the row's label).
     color_name: Option<&'static [u16]>,
-    /// Defaults as stored (RGBA bytes), for a color the player hasn't picked: the row's color, its second color.
-    default_colors: [u32; 2],
-    /// The second color's name, if the row has one.
-    second_color: Option<&'static [u16]>,
+    /// Defaults as stored (RGBA bytes), for a color the player hasn't picked: the row's color, then its extra colors.
+    default_colors: [u32; MAX_COLORS],
+    /// The extra colors' names (the second color, the third).
+    extra_colors: &'static [&'static [u16]],
     choices: Option<Choices>,
 }
 
@@ -106,16 +108,19 @@ fn stored_default(color: u32) -> u32 {
 
 /// Shows a row in the Paint list (before the hooks go live: claimed once), with a label, showing `color` (0xRRGGBB)
 /// until the player picks one. Its panel offers that color (named `color_name`, else the game's "Color"), a
-/// `second_color` (label, default) and `choices` (title, labels, the default one), in that order. The panel's second
-/// entry is a color clip, so choices need a second color.
+/// `extra_colors` (label, default each) and `choices` (title, labels, the default one): the panel's entries are the
+/// color, the second color, the choices, the third color, the order of the panel clip's color, color, material and
+/// color items (tools/build_gfx.py), so choices need a second color and a third color needs choices.
 pub(crate) fn claim(
     row: usize,
     label: &str,
     (color_name, color): (Option<&str>, u32),
-    second_color: Option<(&str, u32)>,
+    extra_colors: &[(&str, u32)],
     choices: Option<(&str, &[&str], u32)>,
 ) {
-    assert!(choices.is_none() || second_color.is_some());
+    assert!(extra_colors.len() < MAX_COLORS);
+    assert!(choices.is_none() || !extra_colors.is_empty());
+    assert!(extra_colors.len() < 2 || choices.is_some());
     let choices = choices.map(|(title, labels, default)| {
         assert!(!labels.is_empty() && labels.len() <= CHOICE_MASK as usize && (default as usize) < labels.len());
         let labels = labels.iter().map(|label| leak_utf16(label)).collect::<Vec<_>>().leak();
@@ -124,8 +129,11 @@ pub(crate) fn claim(
     let settings = Row {
         label: leak_utf16(label),
         color_name: color_name.map(leak_utf16),
-        default_colors: [stored_default(color), second_color.map_or(ALPHA_MASK, |(_, color)| stored_default(color))],
-        second_color: second_color.map(|(label, _)| leak_utf16(label)),
+        default_colors: std::array::from_fn(|which| match which {
+            0 => stored_default(color),
+            _ => extra_colors.get(which - 1).map_or(ALPHA_MASK, |&(_, color)| stored_default(color)),
+        }),
+        extra_colors: extra_colors.iter().map(|&(label, _)| leak_utf16(label)).collect::<Vec<_>>().leak(),
         choices,
     };
     assert!(ROWS[row].set(settings).is_ok(), "row {row} claimed twice");
@@ -153,8 +161,8 @@ fn shown_choice(choices: &Choices, stored: u16) -> u32 {
 
 // ---- on the player's AC ----------------------------------------------------------------------------------------------
 
-/// A row's color (`which`: 0 its color, 1 its second) on the player's AC (0xRRGGBB): the picked one, or the default.
-/// None while the player's data isn't loaded.
+/// A row's color (`which`: 0 its color, 1 and 2 its extra ones) on the player's AC (0xRRGGBB): the picked one, or the
+/// default. None while the player's data isn't loaded.
 pub(crate) fn color(row: usize, which: usize) -> Option<u32> {
     Some(swap_red_blue(shown_color(settings(row)?, which, paint_data::value(color_offset(row, which))?)))
 }
@@ -168,7 +176,7 @@ pub(crate) fn choice(row: usize) -> Option<u32> {
 
 // ---- for the panel (panel.rs): in a paint block, the edit context's working one -------------------------------------
 
-/// A row's color (`which`: 0 the row's, 1 its second) as stored (RGBA bytes, alpha 0xFF).
+/// A row's color (`which`: 0 the row's, 1 and 2 its extra ones) as stored (RGBA bytes, alpha 0xFF).
 pub(crate) unsafe fn stored_color(paint: usize, row: usize, which: usize) -> u32 {
     let Some(settings) = settings(row) else { return ALPHA_MASK };
     shown_color(settings, which, unsafe { *((paint + color_offset(row, which)) as *const u32) })
@@ -178,10 +186,13 @@ pub(crate) unsafe fn store_color(paint: usize, row: usize, which: usize, color: 
     unsafe { *((paint + color_offset(row, which)) as *mut u32) = (color & !ALPHA_MASK) | PICKED_ALPHA };
 }
 
-/// A color's name, as the picker's title: the row's color name (else its label), the second color's.
+/// A color's name, as the picker's title: the row's color name (else its label), an extra color's.
 pub(crate) fn color_label(row: usize, which: usize) -> &'static [u16] {
     let Some(settings) = settings(row) else { return &[0] };
-    if which == 0 { settings.color_name.unwrap_or(settings.label) } else { settings.second_color.unwrap_or(&[0]) }
+    match which {
+        0 => settings.color_name.unwrap_or(settings.label),
+        _ => settings.extra_colors.get(which - 1).copied().unwrap_or(&[0]),
+    }
 }
 
 /// The row's color's name in the panel, if it has its own.
@@ -189,8 +200,9 @@ pub(crate) fn color_name(row: usize) -> Option<&'static [u16]> {
     settings(row)?.color_name
 }
 
-pub(crate) fn has_second_color(row: usize) -> bool {
-    settings(row).is_some_and(|s| s.second_color.is_some())
+/// How many colors a row has besides its own.
+pub(crate) fn extra_color_count(row: usize) -> usize {
+    settings(row).map_or(0, |s| s.extra_colors.len())
 }
 
 /// A row's choices: their title and labels (none if it has no choices).

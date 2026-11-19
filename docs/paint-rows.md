@@ -109,7 +109,7 @@ constructs the panel object on a panel clip (`0x140f47160(panel, clip handle, de
 - **Writes** go into the edit context's working paint block, so the picker and the list preview live and cancel
   puts the block back.
 - **Clip.** The rows' panel is its own clip, `Color_Material_Color_Select`, a copy of the Color / Material panel
-  with items color, color, material (`tools/build_gfx.py`), placed visible like the stock panels (the MainContent
+  with items color, color, material, color (`Item_3_0` added below the others; `tools/build_gfx.py`), placed visible like the stock panels (the MainContent
   timeline replays its placements when a sub-window closes) and hidden at screen setup (`0x140f3fd90`, where the
   game hides its own three).
 - **Tall list.** The stock list host `Text_ItemList` shows 3 items. `Text_ItemList_Tall` is a copy with 11 item
@@ -134,8 +134,8 @@ The paint data is 14 sections of 0x44 bytes, saved and carried by designs as one
 Sections: 0 head, 1 core, 2 R arm, 3 L arm, 4 legs, 5 R weapon, 8 L weapon, 11 the leftover Extension unit, 12 R
 back, 13 L back. The part categories (`0x14045d960`) never write 6, 7, 9 and 10; 10's header gets written by something
 else and Sundance's Extension parts mod uses it. Rows 0, 1, 2 use sections 7, 6, 9 (row 0 on 7 because version
-0.1.0 stored its thruster color there): the color in color 0, the second color in color 1, the choice in material
-0. The rest of those sections is unused.
+0.1.0 stored its thruster color there): the color in color 0, the extra colors in colors 1 and 2, the choice in
+material 0. The rest of those sections is unused.
 
 Why a row is AC-wide and can't be per part: a stock row's color lives in the selected part's own sections (slot k of
 head, core...), which is what makes it per part. An extra row has no slot in those sections (they only have six
