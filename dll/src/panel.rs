@@ -9,12 +9,13 @@
 //!   Material one with a color item third, tools/build_gfx.py).
 //! - DEVICE (the game has its brightness, switched off at the row: its material, 90-99, drives how bright the AC's
 //!   lights are): the game's own Color entry, and a Brightness entry doing what the game's Material entry would for its
-//!   slot (the stock material picker, which labels those materials by their glow), on the stock Color / Material clip.
-//!   Built here rather than by the game's builder, which adds a Paint Pattern entry.
+//!   slot (the stock material picker; the material text hook labels those materials "Brightness N%"), on the stock
+//!   Color / Material clip. Built here rather than by the game's builder, which adds a Paint Pattern entry.
 //! A color opens the game's color picker with our title, color and callback; a choice opens a list of options (the
 //! game's command list, as the pattern's Size does). Both write into the edit context's working paint block, so the
 //! picker and the list preview live and cancel puts the block back.
 
+use std::sync::OnceLock;
 use std::sync::atomic::AtomicUsize;
 
 use crate::ui::{self, Closure, Description, Function, FunctionTable, Handle, Label, game_fn, with_clip};
@@ -22,6 +23,10 @@ use crate::{Hook, log, orig, rows};
 
 pub(crate) const DEVICE_SLOT: u8 = 5;
 static BRIGHTNESS: [u16; 11] = ui::utf16(b"Brightness\0");
+// DEVICE's materials, and where their glow is: a float at + 8 of the material's param row (0x140e0cdd0(material)).
+const DEVICE_MATERIALS: std::ops::Range<u32> = 90..100;
+const MATERIAL_ROW_GLOW_OFFSET: usize = 8;
+static ORIG_MATERIAL_TEXT: AtomicUsize = AtomicUsize::new(0);
 
 // The rows' panel clip, in the Paint screen's MainContent clip (its handle at screen + 0x1da0). At screen setup
 // (0x140f3fd90) the game looks its three panel clips up there by name and hides them; the setup hook does the same for
@@ -44,9 +49,13 @@ const MENU_ALLOCATOR_ADDR: usize = 0x144e2e638;
 // The game's "Color" header text.
 const COLOR_TEXT: u32 = 0x334e6;
 
-pub(crate) fn hooks() -> [Hook; 1] {
-    // mov [rsp+10],rdx / mov [rsp+8],rcx
-    [(0x140f3fd90, [0x48, 0x89, 0x54, 0x24, 0x10, 0x48], set_up_panels_impl as *const (), &ORIG_SET_UP_PANELS)]
+pub(crate) fn hooks() -> [Hook; 2] {
+    [
+        // mov [rsp+10],rdx / mov [rsp+8],rcx
+        (0x140f3fd90, [0x48, 0x89, 0x54, 0x24, 0x10, 0x48], set_up_panels_impl as *const (), &ORIG_SET_UP_PANELS),
+        // mov rax,rsp / push rdi / sub rsp,..
+        (0x140f35c40, [0x48, 0x8b, 0xc4, 0x57, 0x48, 0x81], material_text_impl as *const (), &ORIG_MATERIAL_TEXT),
+    ]
 }
 
 type SetUpPanelsFn = unsafe extern "system" fn(usize, usize, usize, usize) -> usize;
@@ -251,6 +260,28 @@ unsafe extern "system" fn brightness_refresh(this: *const Closure<Entry>, clip: 
             ui::destroy_handle(at);
         });
     }
+}
+
+/// The material picker's and our Brightness entry's text for a material (0x140f35c40(info, out): the slot, u8 at
+/// + 0; the material, + 0x20). The game's for DEVICE is "Light Source Intensity" with the glow glued on ("...1.5");
+/// ours: "Brightness 150%", the glow as a percentage. Made once and kept (a label keeps its text's address).
+unsafe extern "system" fn material_text_impl(info: *const u8, out: *mut Label) -> *mut Label {
+    static LABELS: OnceLock<Vec<&'static [u16]>> = OnceLock::new();
+    let material = unsafe { *(info.add(0x20) as *const u32) };
+    if unsafe { *info } != DEVICE_SLOT || !DEVICE_MATERIALS.contains(&material) {
+        type MaterialTextFn = unsafe extern "system" fn(*const u8, *mut Label) -> *mut Label;
+        return unsafe { orig::<MaterialTextFn>(&ORIG_MATERIAL_TEXT)(info, out) };
+    }
+    let labels = LABELS.get_or_init(|| {
+        let material_row: unsafe extern "system" fn(u32) -> usize = unsafe { game_fn(0x140e0cdd0) };
+        DEVICE_MATERIALS
+            .map(|material| {
+                let glow = crate::read::<f32>(unsafe { material_row(material) } + MATERIAL_ROW_GLOW_OFFSET).unwrap_or(1.0);
+                ui::leak_utf16(&format!("Brightness {}%", (glow * 100.0).round() as u32))
+            })
+            .collect()
+    });
+    unsafe { (*out).set(labels[(material - DEVICE_MATERIALS.start) as usize]) }
 }
 
 /// Opens the game's material picker for DEVICE (0x140f38320(screen, out, child windows, slot)), as the game's

@@ -35,7 +35,7 @@ The defaults (the stock pale cyan, 100%, red) are the stock HUD. They apply from
 
 **DEVICE** gets its hidden setting back: how bright the AC's lights are. Confirming the DEVICE row now opens a
 panel with its color and a Brightness entry, which opens the game's own material picker with the ten light
-intensities (0.1 to 4.5), per part like any material. NPC ACs use them; the stock menu just never let you reach
+intensities (Brightness 10% to 450%), per part like any material. NPC ACs use them; the stock menu just never let you reach
 them.
 
 Coming from a build with the HUD WARNING row: the warning color is now in the HUD row's panel, and a warning color

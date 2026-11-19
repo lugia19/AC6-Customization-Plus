@@ -6,7 +6,7 @@
 //! - hud.rs, hud_movie.rs: the HUD row (color, opacity, warning color) on the in-mission HUD.
 //!
 //! Hooks:
-//! - 4 Paint list functions, in rows.rs; the panels' setup, in panel.rs.
+//! - 4 Paint list functions, in rows.rs; the panels' setup and the material text (DEVICE's labels), in panel.rs.
 //! - 0x142b56480 FXR external value read: serves the color to the flames, in thrusters.rs.
 //! - 0x141609040 menu movie lookup and 0x1415f40b0 the Scaleform file opener: the HUD's look, in hud.rs.
 //! - The two flame-carrying slot updates: whether a flame is the player's, in player_flames.rs.

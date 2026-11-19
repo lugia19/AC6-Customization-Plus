@@ -177,10 +177,15 @@ Two of the row hooks also bring back the DEVICE row's hidden setting (`dll/src/p
 true for DEVICE, so its row is built like MAIN..OTHER, and the panel switch gets a panel from `panel.rs` for slot
 5: the game's own Color entry (`0x140f3b1c0(screen, desc, 5, label)`) and a Brightness entry doing what the game's
 Material entry would for slot 5. Its confirm opens the stock material picker, `0x140f38320(screen, out, a3 + 0x10,
-5)`, which lists materials 90-99 (`0x14045da60` gives 90 for DEVICE) and labels them itself ("Light Source
-Intensity" and the material row's glow, a float at +8 of its `PlayerMaterialPresetParam` row, 0.1 to 4.5, 1.0 for
-the default 92). Its refresh is the game's Material entry refresh (`0x140f47e80`) redone for slot 5: the icon
-(`0x140f44fd0`, `0x140f45260(icon, material)`) and the menu's text (`0x140f35c40`).
+5)`, which lists materials 90-99 (`0x14045da60` gives 90 for DEVICE). Its refresh is the game's Material entry
+refresh (`0x140f47e80`) redone for slot 5: the icon (`0x140f44fd0`, `0x140f45260(icon, material)`) and the menu's
+text (`0x140f35c40`).
+
+The labels: the game's text for these materials is text 210313, "Light Source Intensity", with the material row's
+glow (a float at +8 of its `PlayerMaterialPresetParam` row, 0.1 to 4.5, 1.0 for the default 92) glued on as `%.1f`:
+"Light Source Intensity1.5". A hook on that text function (`0x140f35c40(info, out)`; slot u8 at +0, material at
++0x20) returns "Brightness 150%" for slot 5's materials instead, in the picker and the panel. Editing text 210313
+would only fix the spacing, and means shipping the menu message files.
 
 The panel is built here rather than by the game's builder because that one adds Paint Pattern's Apply entry on an
 AC with a pattern. It sits on the stock Color / Material clip, so nothing may be hidden on it: the stock entries
