@@ -15,7 +15,7 @@ More to customize in Armored Core VI's Paint screen (1.09.1), saved with each AC
 2. In the garage, Paint: below WEATHERING there's a new panel, ENTIRE AC, with two rows. Each is one setting for
    the whole AC, whichever part tab is open. Confirming a row opens its panel, like MAIN's Color / Material.
 
-**THRUSTER**: a color, a flame type and an accent color. Until you pick a color, it's white. Dark colors work
+**GENERATOR**: a thruster color, an accent color and a flame type. Until you pick a color, it's white. Dark colors work
 too: the flames darken what's behind them instead of glowing. The accent color isn't used yet. The types:
 - **Generator's own** (the default): the flames of the generator you have equipped.
 - **Combustion**, **Current**, **Coral**: the game's three kinds of flame. They differ in shape and detail, not only
@@ -93,7 +93,7 @@ Coming from 0.1.0 (AC6-Thruster-Customization)? The save file has a new name: re
   colors (the stagger bar's orange and red, reload and overheat, low AP, boss HP green, condition gauge
   purple...): their hue is rotated, and their saturation and brightness scaled, by what takes pure red to the
   warning color.
-- **Color.** The DLL reads your color from the THRUSTER row and serves it to the flames as FXR external values, the
+- **Color.** The DLL reads your color from the GENERATOR row and serves it to the flames as FXR external values, the
   same way as [AC6-FXR-DLL-POC](https://github.com/lugia19/AC6-FXR-DLL-POC). Without the DLL, everything plays stock.
   
   The DLL does all the color math, and the flames only multiply by what it serves. That matters: an FXR can only take

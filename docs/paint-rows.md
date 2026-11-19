@@ -90,7 +90,7 @@ constructs the panel object on a panel clip (`0x140f47160(panel, clip handle, de
 | Entry | Refresh | On confirm |
 |---|---|---|
 | Color | the swatch (`Color/Tile`, else `Color` itself, as the game's Color entry does; panel items have no Tile) and the RGB text; `Camouflage` (the pattern overlay) on "no pattern" | the game's color picker `0x140f37450(screen, out, a3 + 0x10, title, color, on-color)` with our title and callback |
-| A choice (Flame type, Opacity) | the choice's name in `Value_0`; the material icon hidden | an option list (the game's `01_070_CommandList`, as the pattern's Size does) |
+| A choice (Flame type, Opacity) | the choice's name in `Value_0`; the material icon hidden | an option list, as the pattern's Size does, in our own 11-row list host (below) |
 | Second color (Accent color, Warning color) | as Color | as Color |
 
 - **Screens.** The panel state (`list`, the Paint screen + 0x2618) starts with the Paint screen (`list[0]`: its
@@ -101,7 +101,7 @@ constructs the panel object on a panel clip (`0x140f47160(panel, clip handle, de
   list is pushed (as the game's entries pass it).
 - **Option lists.** A description per open (title, one item per option, the current one selected), then the jobs as
   the Size list builds them: a restore job (`0x140f3c2b0`, a snapshot of the paint block), the list window
-  (`0x140f382e0(desc, out, screen + 0x3d8)`), a branch restoring the snapshot on cancel (`0x1416c4660`), all inside
+  (`0x140f382e0(desc, out, host)`, host = our tall list below, else the stock `screen + 0x3d8`), a branch restoring the snapshot on cancel (`0x1416c4660`), all inside
   the "sub-window open" wrapper (`0x140f3b490`). Options must be appended with `0x140c847e0`, the list-item add the
   game's lists use: appended as panel entries (`0x140d3c600`), confirming one leaves the list open. An option's
   on-confirm returns a job storing the choice (`0x140a63060(out, fn, {2, 0})`); with desc + 0xba0 set it also runs
@@ -109,9 +109,13 @@ constructs the panel object on a panel clip (`0x140f47160(panel, clip handle, de
 - **Writes** go into the edit context's working paint block, so the picker and the list preview live and cancel
   puts the block back.
 - **Clip.** The rows' panel is its own clip, `Color_Material_Color_Select`, a copy of the Color / Material panel
-  with a color item third (`tools/build_gfx.py`), placed visible like the stock panels (the MainContent timeline
-  replays its placements when a sub-window closes) and hidden at screen setup (`0x140f3fd90`, where the game hides
-  its own three).
+  with items color, color, material (`tools/build_gfx.py`), placed visible like the stock panels (the MainContent
+  timeline replays its placements when a sub-window closes) and hidden at screen setup (`0x140f3fd90`, where the
+  game hides its own three).
+- **Tall list.** The stock list host `Text_ItemList` shows 3 items. `Text_ItemList_Tall` is a copy with 11 item
+  slots: its `Base` has one frame per item count (the game picks clamp(count, 1, frames) in `0x140c76730`), frames
+  4-11 stretch the background and a scale-9 copy of the outline, and it sits at the movie root 3000 twips higher
+  than the stock host, using the full height. The DLL finds it under the root (`0x140c8a6f0`) and hides it at setup.
 - Clip handles (0x60 bytes) point to themselves: they are built in place and never moved (a moved one crashed).
 
 ## Storage
