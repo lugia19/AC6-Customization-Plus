@@ -42,6 +42,8 @@ const KIND_TINT: u8 = 1;
 const KIND_MIX: u8 = 2;
 // The alpha multiply of a transform the preparation added to a top-level element.
 const KIND_ALPHA: u8 = 3;
+// Six hex digits of an HTML text's color="#rrggbb" (they win over the text field's color).
+const KIND_HEX_TEXT: u8 = 4;
 
 /// The prepared file's movie and table entries. None if it isn't a prepared file.
 fn parts(prepared: &[u8]) -> Option<(&[u8], impl Iterator<Item = Entry> + '_)> {
@@ -77,6 +79,7 @@ pub(crate) fn with_look(prepared: &[u8], look: Look) -> Option<(Vec<u8>, usize)>
             KIND_COLOR_BYTES => recolor.color_bytes(entry.bit / 8),
             KIND_TINT => recolor.tint(&entry),
             KIND_MIX => recolor.mix(&entry),
+            KIND_HEX_TEXT => recolor.hex_text(entry.bit / 8),
             _ => None,
         };
     }
@@ -200,6 +203,14 @@ impl Recolor {
         let color: [u8; 3] = self.movie.get(pos..pos + 3)?.try_into().ok()?;
         let new = self.rule(color.map(|c| c as f64 / 255.0));
         self.movie[pos..pos + 3].copy_from_slice(&new.map(|c| half_up(c * 255.0).min(255) as u8));
+        Some(())
+    }
+
+    fn hex_text(&mut self, pos: usize) -> Option<()> {
+        let digits = std::str::from_utf8(self.movie.get(pos..pos + 6)?).ok()?;
+        let new = self.rule(channels(u32::from_str_radix(digits, 16).ok()?));
+        let [r, g, b] = new.map(|c| half_up(c * 255.0).min(255));
+        self.movie[pos..pos + 6].copy_from_slice(format!("{r:02x}{g:02x}{b:02x}").as_bytes());
         Some(())
     }
 

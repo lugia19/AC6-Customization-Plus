@@ -13,7 +13,9 @@ u32 offset of the table, "PMHUDTBL"}. Kinds:
   1 tint          a color transform's multiply terms (256 = 1.0): the multiply is the color
   2 mix           a color transform's add terms, mixing what's below (share: its grey multiply) with a color
   3 alpha         the alpha multiply of a transform added here
+  4 hex text      six hex digits of an HTML text's color="#rrggbb" (byte offset * 8)
 """
+import re
 import struct
 import sys
 
@@ -21,8 +23,9 @@ END, SHAPE, SHAPE2, PLACE_OBJECT2, SHAPE3, EDIT_TEXT, SPRITE, PLACE_OBJECT3, SHA
 HAS_CHARACTER, HAS_MATRIX, HAS_COLOR_TRANSFORM = 0x02, 0x04, 0x08
 PLACE3_CLASS_NAME_OR_IMAGE = 0x18  # PlaceObject3's second flags byte: a class name follows the depth
 
-COLOR_BYTES, TINT, MIX, ALPHA = 0, 1, 2, 3
+COLOR_BYTES, TINT, MIX, ALPHA, HEX_TEXT = 0, 1, 2, 3, 4
 MAGIC = b"PMHUDTBL"
+HTML_COLOR = re.compile(rb'color="#([0-9a-fA-F]{6})"')
 # CXFORMWITHALPHA, multiply terms only, 10-bit fields, all 256 (1.0): no add, multiply, width 10, then four terms.
 NEUTRAL_TRANSFORM_BITS = "0" + "1" + "1010" + format(256, "010b") * 4
 NEUTRAL_TRANSFORM = int(NEUTRAL_TRANSFORM_BITS.ljust(48, "0"), 2).to_bytes(6, "big")
@@ -235,8 +238,8 @@ class Colors:
                 fill_bits, line_bits = d[pos] >> 4, d[pos] & 0xf
                 bit = (pos + 1) * 8
 
-    def edit_text(self, body):
-        """A DefineEditText tag's text color."""
+    def edit_text(self, body, length):
+        """A DefineEditText tag's text color, and the colors in its HTML text: they win over the text color."""
         d = self.d
         pos = rect_end(d, body + 2)
         flags, flags2 = d[pos], d[pos + 1]
@@ -250,13 +253,22 @@ class Colors:
             pos += 2  # font height
         if has_color:
             self.color_bytes(pos)
+            pos += 4
+        if flags & 0x02:  # max length
+            pos += 2
+        if flags2 & 0x20:  # layout
+            pos += 9
+        pos = d.index(b"\0", pos) + 1  # variable name
+        if flags & 0x80 and flags2 & 0x02:  # HTML text
+            for found in HTML_COLOR.finditer(d, pos, body + length):
+                self.entries.append((found.start(1) * 8, HEX_TEXT, 0, 0))
 
     def walk(self, start, end):
         for tag_type, body, length, _ in tags(self.d, start, end):
             if tag_type in (SHAPE, SHAPE2, SHAPE3, SHAPE4):
                 self.shape(tag_type, body)
             elif tag_type == EDIT_TEXT:
-                self.edit_text(body)
+                self.edit_text(body, length)
             elif tag_type == SPRITE:  # character ID, frame count, then its own tags
                 self.walk(body + 4, body + length)
             elif tag_type in (PLACE_OBJECT2, PLACE_OBJECT3) and self.d[body] & HAS_COLOR_TRANSFORM:
@@ -279,9 +291,9 @@ def main():
     stock = open(sys.argv[1], "rb").read()
     prepared, entries = prepare(stock)
     open(sys.argv[2], "wb").write(prepared)
-    counts = [sum(1 for e in entries if e[1] == kind) for kind in (COLOR_BYTES, TINT, MIX, ALPHA)]
+    counts = [sum(1 for e in entries if e[1] == kind) for kind in (COLOR_BYTES, TINT, MIX, ALPHA, HEX_TEXT)]
     print(f"HUD movie prepared: {counts[0]} color bytes, {counts[1]} tints, {counts[2]} mixes, "
-          f"{counts[3]} top-level elements; table {len(prepared) - len(stock)} bytes")
+          f"{counts[4]} HTML text colors, {counts[3]} top-level elements; table {len(prepared) - len(stock)} bytes")
 
 
 if __name__ == "__main__":
