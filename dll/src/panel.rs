@@ -5,8 +5,8 @@
 //! the job that opens what comes next, a refresh std::function filling the item's clip every frame), made into the
 //! game's panel object (0x140f47160, as the Color / Material builder 0x140f49590 does) on a panel clip. Entry N fills
 //! clip Item_N_0.
-//! - Our rows: Color, the choices, a second color, all ours, on the rows' own panel clip (a copy of the Color /
-//!   Material one with a color item third, tools/build_gfx.py).
+//! - Our rows: their color, a second color, the choices, all ours, on the rows' own panel clip (a copy of the Color /
+//!   Material one with color, color, material items, tools/build_gfx.py).
 //! - DEVICE (the game has its brightness, switched off at the row: its material, 90-99, drives how bright the AC's
 //!   lights are): the game's own Color entry, and a Brightness entry doing what the game's Material entry would for its
 //!   slot (the stock material picker; the material text hook labels those materials "Brightness N%"), on the stock
@@ -40,6 +40,9 @@ static ORIG_SET_UP_PANELS: AtomicUsize = AtomicUsize::new(0);
 const SCREEN_EDIT_CONTEXT_OFFSET: usize = 0x440;
 const SCREEN_LIST_HOST_OFFSET: usize = 0x3d8;
 const SCREEN_LIST_DATA_OFFSET: usize = 0x438;
+// Where our option lists open: a taller copy of the game's host (Text_ItemList, the one at + 0x3d8: three rows) at
+// the movie's root (tools/build_gfx.py).
+const TALL_LIST_HOST_NAME: &std::ffi::CStr = c"Text_ItemList_Tall";
 // The Color / Material panel clip's handle in the panel state, and the owner the panels get.
 const LIST_STOCK_PANEL_OFFSET: usize = 0x78;
 const LIST_OWNER_OFFSET: usize = 8;
@@ -62,8 +65,33 @@ type SetUpPanelsFn = unsafe extern "system" fn(usize, usize, usize, usize) -> us
 
 unsafe extern "system" fn set_up_panels_impl(list: usize, content: usize, screen: usize, a4: usize) -> usize {
     let result = unsafe { orig::<SetUpPanelsFn>(&ORIG_SET_UP_PANELS)(list, content, screen, a4) };
-    unsafe { with_clip(screen + SCREEN_MAIN_CONTENT_OFFSET, ROWS_PANEL_NAME, |panel| panel.set_visible(false)) };
+    unsafe {
+        with_clip(screen + SCREEN_MAIN_CONTENT_OFFSET, ROWS_PANEL_NAME, |panel| panel.set_visible(false));
+        // Hidden like the game's list hosts (0x140f344c0); the list window shows its host when it opens.
+        with_root(entries_screen(list), |root| with_clip(root, TALL_LIST_HOST_NAME, |host| host.set_visible(false)));
+    }
     result
+}
+
+/// The object the panel state's owner gives the entries (its virtual 2; see `build`).
+unsafe fn entries_screen(list: usize) -> usize {
+    let owner = list + LIST_OWNER_OFFSET;
+    unsafe {
+        let screen: unsafe extern "system" fn(usize) -> usize = game_fn(*(*(owner as *const *const usize)).add(2));
+        screen(owner)
+    }
+}
+
+/// Does `act` with the handle of the movie root of the entries' screen (0x140c8a6f0(screen + 0x10, out), what the
+/// game looks its list hosts up under).
+unsafe fn with_root(screen: usize, act: impl FnOnce(usize)) {
+    let root_of: unsafe extern "system" fn(usize, *mut Handle) -> *mut Handle = unsafe { game_fn(0x140c8a6f0) };
+    let mut root = Handle::new();
+    unsafe {
+        root_of(screen + 0x10, &mut root);
+        act(root.address());
+        root.destroy();
+    }
 }
 
 // ---- what an entry is about ----------------------------------------------------------------------------------------
@@ -206,7 +234,13 @@ unsafe extern "system" fn choice_confirm(this: *const Closure<Entry>, out: *mut 
         // with failure), except the list window job itself, released here.
         let (mut restore, mut list, mut list_with_failure) = (0, 0, 0);
         restore_job(entry.screen, &mut restore);
-        list_job(description.address(), &mut list, entry.screen + SCREEN_LIST_HOST_OFFSET);
+        // The list job copies the host's handle (0x140d3c9f9), so a temporary one does. Without our movie: the game's.
+        with_root(entry.screen, |root| {
+            let mut host = Handle::new();
+            let tall = host.find(root, TALL_LIST_HOST_NAME);
+            list_job(description.address(), &mut list, if tall { host.address() } else { entry.screen + SCREEN_LIST_HOST_OFFSET });
+            host.destroy();
+        });
         on_failure(&mut list, &mut list_with_failure, &mut restore);
         sub_window(entry.screen, out, &mut list_with_failure);
         ui::release(list);
@@ -325,12 +359,17 @@ pub(crate) unsafe fn build(list: usize, row: Option<usize>) -> usize {
                     clip.destroy();
                     return 0;
                 }
-                add(&mut description, labels[0].set_game_text(COLOR_TEXT), &COLOR_CONFIRM, &COLOR_REFRESH, 0);
-                if let Some((title, _)) = rows::choices(row) {
-                    add(&mut description, labels[1].set(title), &CHOICE_CONFIRM, &CHOICE_REFRESH, 0);
-                }
+                // In the clip's order: color, color, material (tools/build_gfx.py).
+                let color_header = match rows::color_name(row) {
+                    Some(name) => labels[0].set(name),
+                    None => labels[0].set_game_text(COLOR_TEXT),
+                };
+                add(&mut description, color_header, &COLOR_CONFIRM, &COLOR_REFRESH, 0);
                 if rows::has_second_color(row) {
-                    add(&mut description, labels[2].set(rows::color_label(row, 1)), &COLOR_CONFIRM, &COLOR_REFRESH, 1);
+                    add(&mut description, labels[1].set(rows::color_label(row, 1)), &COLOR_CONFIRM, &COLOR_REFRESH, 1);
+                }
+                if let Some((title, _)) = rows::choices(row) {
+                    add(&mut description, labels[2].set(title), &CHOICE_CONFIRM, &CHOICE_REFRESH, 0);
                 }
             }
             None => {

@@ -202,7 +202,7 @@ pub(crate) fn claim_row() {
     let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
     // Fully opaque, the last one, is the default.
     let opacity = Some(("Opacity", labels.as_slice(), OPACITIES.len() as u32 - 1));
-    rows::claim(ROW_HUD, "HUD", Look::STOCK.hud, opacity, Some(("Warning color", Look::STOCK.warning)));
+    rows::claim(ROW_HUD, "HUD", (None, Look::STOCK.hud), Some(("Warning color", Look::STOCK.warning)), opacity);
 }
 
 /// What the rows say right now. None while the player's data isn't loaded.

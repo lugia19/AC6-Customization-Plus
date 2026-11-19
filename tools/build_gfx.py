@@ -12,8 +12,8 @@ panel's header, a text field copied from the rows' label field (228) with its ow
 
 The rows panel: the game looks its panels up by name in the content sprite (269) and fills a panel's Item_<n>_0 clips
 with a panel's entries, in order. The Color / Material panel (192) has a color item, a material item and the Paint
-Pattern item (fixed text "Apply"). The extra rows' panel is a copy of it with a second color item in third place,
-under its own name (dll/src/panel.rs builds the panel on it).
+Pattern item (fixed text "Apply"). The extra rows' panel is a copy of it with color, color and material items, under
+its own name (dll/src/panel.rs builds the panel on it).
 """
 import struct
 import sys
@@ -31,8 +31,12 @@ NEW_ROW_DEPTHS = (7, 8, 9)  # free depths in the list sprite
 FIRST_NEW_ROW = 9  # Item_<n>_0
 CONTENT_SPRITE = 269
 STOCK_PANEL_SPRITE = 192
+# The Color / Material panel's items: Item_0_0 color, Item_1_0 material, Item_2_0 Paint Pattern. The rows' panel
+# places color, color, material (dll/src/panel.rs adds a row's color, second color, choices in that order).
 PANEL_COLOR_ITEM = 191
+PANEL_MATERIAL_ITEM = 185
 PANEL_PATTERN_ITEM = 178
+ROWS_PANEL_ITEMS = {PANEL_MATERIAL_ITEM: PANEL_COLOR_ITEM, PANEL_PATTERN_ITEM: PANEL_MATERIAL_ITEM}
 ROWS_PANEL_ID = 402
 ROWS_PANEL_NAME = "Color_Material_Color_Select"
 STOCK_PANEL_DEPTH = 118  # the Color / Material panel's in the content sprite
@@ -55,7 +59,29 @@ ROW_PITCH = 950  # the stock rows are 1000 apart; three rows and the header have
 PANEL_TINT = (176, 176, 176, 154)
 SLICE_DEPTHS = 4  # depths the slice (and the header) take at the bottom of a row sprite
 
-SHOW_FRAME, PLACE_OBJECT2, DEFINE_EDIT_TEXT, DEFINE_SPRITE, FRAME_LABEL, SYMBOL_CLASS, END = 1, 26, 37, 39, 43, 76, 0
+# The option lists' host: the Paint movie's own single-column list, Text_ItemList (sprite 397, placed at the root),
+# has three item slots, and its background Base (sprite 389) one frame per item count up to 3 (the list sets frame
+# min(count, frame count), 0x140c76730). Our lists get a copy with TALL_HOST_SLOTS slots: Base's frames 4.. stretch
+# its rectangle (shape 127, 2000 twips square, scaled) and the frame-3 outline (sprite 388, made scale-9 so its
+# lines keep their width) by one item pitch each.
+STOCK_HOST, STOCK_HOST_BASE, STOCK_HOST_ITEM, STOCK_HOST_OUTLINE = 397, 389, 393, 388
+STOCK_HOST_DEPTH = 2007  # its root placement; the root fades it in over frames 2-14
+STOCK_OUTLINE_BOUNDS = (9920, 20020, 7780, 14540)  # shape 387, in sprite 388
+SCALE9_INSET = 200  # the outline's corners and edges, kept unscaled
+BASE_RECT = (10035, 7919, 4.939, 3.25)  # frame 3's rectangle: x, y, scale x, scale y (of the 2000-twip square)
+BASE_RECT_UNIT = 2000
+HOST_ITEM_X, HOST_ITEM_Y, HOST_ITEM_PITCH = 11760, 9840, 1000
+TALL_HOST_SLOTS = 11
+# The stock host's box grows down from mid-screen; ours is placed this much higher so 11 rows end where 8 would.
+TALL_HOST_Y = -3000
+TALL_HOST_ID, TALL_BASE_ID, TALL_OUTLINE_ID = 403, 404, 405
+TALL_HOST_NAME = "Text_ItemList_Tall"  # dll/src/panel.rs opens its option lists there
+TALL_HOST_DEPTH = 2100  # free at the root
+TALL_ITEM_DEPTHS = range(2, 2 + TALL_HOST_SLOTS - 3)  # free in the host sprite (Base 1, stock items 10-22)
+
+SHOW_FRAME, PLACE_OBJECT2, REMOVE_OBJECT2, DEFINE_EDIT_TEXT, DEFINE_SPRITE, FRAME_LABEL, SYMBOL_CLASS, END = \
+    1, 26, 28, 37, 39, 43, 76, 0
+DEFINE_SCALING_GRID = 78
 
 
 # ---- SWF records ---------------------------------------------------------------------------------------------------
@@ -228,15 +254,16 @@ def row_sprite(stock_row, new_id, row_y, slice_top, texture, header):
 
 
 def rows_panel_sprite(stock_panel):
-    """The Color / Material panel sprite (its tag's content) with the color item in place of the Paint Pattern one."""
+    """The Color / Material panel sprite (its tag's content) with its items replaced as ROWS_PANEL_ITEMS says."""
     body, swapped = b"", 0
     for tag_type, header, _, raw in tags(stock_panel, 4, len(stock_panel)):
         place = raw[header:]
-        if tag_type == PLACE_OBJECT2 and place[0] & 0x02 and struct.unpack_from("<H", place, 3)[0] == PANEL_PATTERN_ITEM:
-            raw = tag(PLACE_OBJECT2, place[:3] + struct.pack("<H", PANEL_COLOR_ITEM) + place[5:])
+        if tag_type == PLACE_OBJECT2 and place[0] & 0x02 and struct.unpack_from("<H", place, 3)[0] in ROWS_PANEL_ITEMS:
+            new = ROWS_PANEL_ITEMS[struct.unpack_from("<H", place, 3)[0]]
+            raw = tag(PLACE_OBJECT2, place[:3] + struct.pack("<H", new) + place[5:])
             swapped += 1
         body += raw
-    assert swapped == 1, "rows panel sprite: the Paint Pattern item isn't placed exactly once"
+    assert swapped == len(ROWS_PANEL_ITEMS), "rows panel sprite: an item to replace isn't placed exactly once"
     return tag(DEFINE_SPRITE, struct.pack("<H", ROWS_PANEL_ID) + stock_panel[2:4] + body)
 
 
@@ -274,11 +301,95 @@ def add_rows_panel(d):
     return len(sprite) + added
 
 
+# ---- The tall option list host -------------------------------------------------------------------------------------
+
+def sprite_body(d, sprite_id):
+    """A DefineSprite's content: frame count (u16) and tags, without the sprite ID."""
+    pos, header, length = find_sprite(d, sprite_id)
+    return bytes(d[pos + header + 2:pos + header + length])
+
+
+def before_end(body, extra):
+    """A sprite content with tags added before its End tag."""
+    assert body.endswith(tag(END, b"")), "sprite content must end with End"
+    return body[:-2] + extra + tag(END, b"")
+
+
+def tall_base(stock_base):
+    """Base with frames 4..TALL_HOST_SLOTS: each one item pitch taller than the last."""
+    x, y, scale_x, scale_y = BASE_RECT
+    x0, x1, y0, y1 = STOCK_OUTLINE_BOUNDS
+    frames = b""
+    for extra in range(1, TALL_HOST_SLOTS - 2):
+        rect = matrix(x, y, scale=(scale_x, scale_y + extra * HOST_ITEM_PITCH / BASE_RECT_UNIT))
+        stretch = (y1 - y0 + extra * HOST_ITEM_PITCH) / (y1 - y0)
+        outline = matrix(0, round(y0 * (1 - stretch)), scale=(1, stretch))
+        frames += (tag(PLACE_OBJECT2, bytes([0x05]) + struct.pack("<H", 1) + rect)
+                   + tag(REMOVE_OBJECT2, struct.pack("<H", 8))
+                   + tag(PLACE_OBJECT2, bytes([0x06]) + struct.pack("<HH", 8, TALL_OUTLINE_ID) + outline)
+                   + tag(SHOW_FRAME, b""))
+    assert struct.unpack_from("<H", stock_base)[0] == 3, "Base: expected 3 frames"
+    return struct.pack("<H", TALL_HOST_SLOTS) + before_end(stock_base[2:], frames)
+
+
+def tall_host(stock_host):
+    """Text_ItemList on the tall Base, with items 3..TALL_HOST_SLOTS-1 below the stock three."""
+    body, rebased = b"", 0
+    for tag_type, header, _, raw in tags(stock_host, 2, len(stock_host)):
+        place = raw[header:]
+        if tag_type == PLACE_OBJECT2 and place[0] & 0x02 and struct.unpack_from("<H", place, 3)[0] == STOCK_HOST_BASE:
+            raw = tag(PLACE_OBJECT2, place[:3] + struct.pack("<H", TALL_BASE_ID) + place[5:])
+            rebased += 1
+        elif tag_type == PLACE_OBJECT2:
+            assert struct.unpack_from("<H", place, 1)[0] not in TALL_ITEM_DEPTHS, "host: an item depth is in use"
+        if tag_type == SHOW_FRAME and rebased == 1:
+            for depth, item in zip(TALL_ITEM_DEPTHS, range(3, TALL_HOST_SLOTS)):
+                body += tag(PLACE_OBJECT2, bytes([0x26]) + struct.pack("<HH", depth, STOCK_HOST_ITEM)
+                            + matrix(HOST_ITEM_X, HOST_ITEM_Y + item * HOST_ITEM_PITCH) + f"Item_{item}_0".encode() + b"\0")
+            rebased += 1
+        body += raw
+    assert rebased == 2, "host: Base isn't placed exactly once in frame 1"
+    return stock_host[:2] + body
+
+
+def add_tall_host(d):
+    """Adds the tall host's characters before the stock host, and mirrors the stock host's root placement and moves
+    at TALL_HOST_DEPTH. Returns the bytes added."""
+    x0, x1, y0, y1 = STOCK_OUTLINE_BOUNDS
+    width, fields = signed_bits([x0 + SCALE9_INSET, x1 - SCALE9_INSET, y0 + SCALE9_INSET, y1 - SCALE9_INSET])
+    characters = (tag(DEFINE_SPRITE, struct.pack("<H", TALL_OUTLINE_ID) + sprite_body(d, STOCK_HOST_OUTLINE))
+                  + tag(DEFINE_SCALING_GRID, struct.pack("<H", TALL_OUTLINE_ID) + pack_bits(format(width, "05b") + fields))
+                  + tag(DEFINE_SPRITE, struct.pack("<H", TALL_BASE_ID) + tall_base(sprite_body(d, STOCK_HOST_BASE)))
+                  + tag(DEFINE_SPRITE, struct.pack("<H", TALL_HOST_ID) + tall_host(sprite_body(d, STOCK_HOST))))
+    root_tags = list(tags(d, first_tag_pos(d), len(d)))
+    assert not any(t == PLACE_OBJECT2 and struct.unpack_from("<H", raw, h + 1)[0] == TALL_HOST_DEPTH
+                   for t, h, _, raw in root_tags), "the tall host's root depth is in use"
+    added = 0
+    for tag_type, header, pos, raw in reversed(root_tags):  # back to front: earlier offsets stay valid
+        if tag_type != PLACE_OBJECT2 or struct.unpack_from("<H", raw, header + 1)[0] != STOCK_HOST_DEPTH:
+            continue
+        place = bytearray(raw[header:])
+        struct.pack_into("<H", place, 1, TALL_HOST_DEPTH)
+        if place[0] & 0x02:  # the placement itself: our sprite, our name
+            assert place[0] == 0x26, "root: the stock host's placement has unexpected fields"
+            struct.pack_into("<H", place, 3, TALL_HOST_ID)
+            _, x, y = read_matrix(place, 5)
+            assert (x, y) == (0, 0), "root: the stock host isn't placed at 0, 0"
+            place = place[:5] + matrix(0, TALL_HOST_Y) + TALL_HOST_NAME.encode() + b"\0"
+        new = tag(PLACE_OBJECT2, bytes(place))
+        d[pos + len(raw):pos + len(raw)] = new
+        added += len(new)
+    host_pos = find_tag(d, DEFINE_SPRITE, STOCK_HOST)[0]
+    d[host_pos:host_pos] = characters
+    return added + len(characters)
+
+
 def main():
     inp, out = sys.argv[1], sys.argv[2]
     d = bytearray(open(inp, "rb").read())
     used = {struct.unpack_from("<H", raw, h)[0] for _, h, _, raw in tags(d, first_tag_pos(d), len(d)) if len(raw) - h >= 2}
-    assert not used & {*NEW_SPRITE_IDS, HEADER_TEXT_ID, ROWS_PANEL_ID}, "a new character's ID may be in use"
+    assert not used & {*NEW_SPRITE_IDS, HEADER_TEXT_ID, ROWS_PANEL_ID, TALL_HOST_ID, TALL_BASE_ID, TALL_OUTLINE_ID}, \
+        "a new character's ID may be in use"
     _, label_header, label_raw = find_tag(d, DEFINE_EDIT_TEXT, ROW_LABEL_TEXT)
     label_text = label_raw[label_header:]
     row_pos, row_header, row_length = find_sprite(d, ROW_SPRITE)
@@ -316,10 +427,10 @@ def main():
     d[first_frame:first_frame] = places
     struct.pack_into("<I", d, list_pos + 2, list_length + len(places))
     d[list_pos:list_pos] = sprites
-    added = len(sprites) + len(places) + len(entries) + add_rows_panel(d)
+    added = len(sprites) + len(places) + len(entries) + add_rows_panel(d) + add_tall_host(d)
     struct.pack_into("<I", d, 4, struct.unpack_from("<I", d, 4)[0] + added)
     open(out, "wb").write(d)
-    print(f"{len(NEW_SPRITE_IDS)} rows and their panel added, size {added:+d} bytes")
+    print(f"{len(NEW_SPRITE_IDS)} rows, their panel and a {TALL_HOST_SLOTS}-item list added, size {added:+d} bytes")
 
 
 if __name__ == "__main__":

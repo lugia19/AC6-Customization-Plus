@@ -120,7 +120,8 @@ fn poll_loop() {
 
 pub(crate) fn claim_row() {
     // The accent color isn't used by the flames yet: meant for the ALLMIND type's assault boost.
-    rows::claim(ROW_THRUSTER, "THRUSTER", DEFAULT_COLOR, Some(("Flame type", &FLAME_TYPES, 0)), Some(("Accent color", DEFAULT_COLOR)));
+    rows::claim(ROW_THRUSTER, "GENERATOR", (Some("Thruster color"), DEFAULT_COLOR), Some(("Accent color", DEFAULT_COLOR)),
+        Some(("Flame type", &FLAME_TYPES, 0)));
 }
 
 pub(crate) fn start() {

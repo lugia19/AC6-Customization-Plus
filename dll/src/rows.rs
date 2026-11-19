@@ -47,6 +47,8 @@ const CHOICE_MASK: u16 = 0x00FF;
 /// A claimed row. Texts are UTF-16 with a terminator, never freed (the game's labels keep their addresses).
 struct Row {
     label: &'static [u16],
+    /// The color's name in the panel, if not the game's "Color" (the picker's title then; else the row's label).
+    color_name: Option<&'static [u16]>,
     /// Defaults as stored (RGBA bytes), for a color the player hasn't picked: the row's color, its second color.
     default_colors: [u32; 2],
     /// The second color's name, if the row has one.
@@ -103,10 +105,17 @@ fn stored_default(color: u32) -> u32 {
 }
 
 /// Shows a row in the Paint list (before the hooks go live: claimed once), with a label, showing `color` (0xRRGGBB)
-/// until the player picks one. Its panel offers that color, `choices` (title, labels, the default one) and a
-/// `second_color` (label, default). The panel's third entry is a color clip, so a second color needs choices.
-pub(crate) fn claim(row: usize, label: &str, color: u32, choices: Option<(&str, &[&str], u32)>, second_color: Option<(&str, u32)>) {
-    assert!(second_color.is_none() || choices.is_some());
+/// until the player picks one. Its panel offers that color (named `color_name`, else the game's "Color"), a
+/// `second_color` (label, default) and `choices` (title, labels, the default one), in that order. The panel's second
+/// entry is a color clip, so choices need a second color.
+pub(crate) fn claim(
+    row: usize,
+    label: &str,
+    (color_name, color): (Option<&str>, u32),
+    second_color: Option<(&str, u32)>,
+    choices: Option<(&str, &[&str], u32)>,
+) {
+    assert!(choices.is_none() || second_color.is_some());
     let choices = choices.map(|(title, labels, default)| {
         assert!(!labels.is_empty() && labels.len() <= CHOICE_MASK as usize && (default as usize) < labels.len());
         let labels = labels.iter().map(|label| leak_utf16(label)).collect::<Vec<_>>().leak();
@@ -114,6 +123,7 @@ pub(crate) fn claim(row: usize, label: &str, color: u32, choices: Option<(&str, 
     });
     let settings = Row {
         label: leak_utf16(label),
+        color_name: color_name.map(leak_utf16),
         default_colors: [stored_default(color), second_color.map_or(ALPHA_MASK, |(_, color)| stored_default(color))],
         second_color: second_color.map(|(label, _)| leak_utf16(label)),
         choices,
@@ -168,10 +178,15 @@ pub(crate) unsafe fn store_color(paint: usize, row: usize, which: usize, color: 
     unsafe { *((paint + color_offset(row, which)) as *mut u32) = (color & !ALPHA_MASK) | PICKED_ALPHA };
 }
 
-/// A color's name: the row's label for its color, the second color's for that.
+/// A color's name, as the picker's title: the row's color name (else its label), the second color's.
 pub(crate) fn color_label(row: usize, which: usize) -> &'static [u16] {
     let Some(settings) = settings(row) else { return &[0] };
-    if which == 0 { settings.label } else { settings.second_color.unwrap_or(&[0]) }
+    if which == 0 { settings.color_name.unwrap_or(settings.label) } else { settings.second_color.unwrap_or(&[0]) }
+}
+
+/// The row's color's name in the panel, if it has its own.
+pub(crate) fn color_name(row: usize) -> Option<&'static [u16]> {
+    settings(row)?.color_name
 }
 
 pub(crate) fn has_second_color(row: usize) -> bool {
