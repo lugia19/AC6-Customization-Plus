@@ -6,11 +6,8 @@
 //! CSFD4MultiSfxIns. After the original update, ours attach 900010 to the slot's wrapper flames: PLAYERS when the
 //! owner is the player's ChrIns, SOMEONE_ELSES otherwise.
 //!
-//! The update is a virtual (vtable + 0x20), and ours replace the vtable entries instead of hooking the functions:
-//! something puts those two functions' original bytes back mid-session (seen after 3 and after 74 minutes, with
-//! every other hook left alone; the flames then all went stock).
-//!
-//! - The two slot classes that carry the flames, with their update and where they keep their SFX object:
+//! - The two slot classes that carry the flames, with their update (vtable + 0x20, hooked: every caller) and where
+//!   they keep their SFX object:
 //!   ChrAcThrusterSfxSlot (our name; vtable 0x1438300f0): update 0x140937cc0, SFX object at + 0x60;
 //!   CS::ChrMultiSfxSlot (vtable 0x14382e2b8; continuous flames, the startup flare): update 0x14092bcd0, + 0x70;
 //!   a third class (vtable 0x14382cbc8) shares that update.
@@ -24,6 +21,10 @@
 //! A new flame shows up in its slot's handles a frame after the update that spawned it, so it's tagged on the next
 //! update; the wrapper waits for a nonzero 900010 (up to 0.3 s, then plays stock). Flames spawned outside the slots
 //! aren't tagged and play stock: one pair in the arena intro cutscene (9412021).
+
+use std::sync::atomic::AtomicUsize;
+
+use crate::{Hook, orig};
 
 const EXT_PLAYERS_FLAME: i32 = 900010;
 const SOMEONE_ELSES: f32 = 1.0;
@@ -47,43 +48,29 @@ const HANDLE_SIZE: usize = 0x2e0;
 // More handles than this means the vector isn't what we think it is.
 const MAX_HANDLES: usize = 64;
 
-const THRUSTER_UPDATE_ADDR: usize = 0x140937cc0;
-const MULTI_UPDATE_ADDR: usize = 0x14092bcd0;
-// The slot classes' vtable entries for the update: (entry, the game's function, ours).
-const UPDATE_ENTRIES: [(usize, usize, SlotUpdateFn); 3] = [
-    (0x1438300f0 + 0x20, THRUSTER_UPDATE_ADDR, thruster_update_impl),
-    (0x14382e2b8 + 0x20, MULTI_UPDATE_ADDR, multi_update_impl),
-    (0x14382cbc8 + 0x20, MULTI_UPDATE_ADDR, multi_update_impl),
-];
+static ORIG_THRUSTER_UPDATE: AtomicUsize = AtomicUsize::new(0);
+static ORIG_MULTI_UPDATE: AtomicUsize = AtomicUsize::new(0);
 
 type SlotUpdateFn = unsafe extern "system" fn(usize, f32, *const usize) -> u64;
 type SetValueFn = unsafe extern "system" fn(usize, usize, i32, f32);
 
-/// Points the slot classes' update entries at ours.
-pub(crate) fn install() -> Result<(), String> {
-    for (entry, game_fn, _) in UPDATE_ENTRIES {
-        if unsafe { *(entry as *const usize) } != game_fn {
-            return Err(format!("vtable entry at {entry:#x} isn't the slot update (not 1.09.1?)"));
-        }
-    }
-    for (entry, _, ours) in UPDATE_ENTRIES {
-        if !unsafe { crate::write_protected(entry, ours as usize) } {
-            return Err(format!("can't write the vtable entry at {entry:#x}"));
-        }
-    }
-    Ok(())
+pub(crate) fn hooks() -> [Hook; 2] {
+    [
+        // mov rax,rsp / push rbp / push rdi / push r13
+        (0x140937cc0, [0x48, 0x8b, 0xc4, 0x55, 0x57, 0x41], thruster_update_impl as *const (), &ORIG_THRUSTER_UPDATE),
+        // push rbp / push rsi / push rdi / push r12
+        (0x14092bcd0, [0x40, 0x55, 0x56, 0x57, 0x41, 0x54], multi_update_impl as *const (), &ORIG_MULTI_UPDATE),
+    ]
 }
 
 unsafe extern "system" fn thruster_update_impl(slot: usize, dt: f32, owner: *const usize) -> u64 {
-    let game_update: SlotUpdateFn = unsafe { std::mem::transmute(THRUSTER_UPDATE_ADDR) };
-    let result = unsafe { game_update(slot, dt, owner) };
+    let result = unsafe { orig::<SlotUpdateFn>(&ORIG_THRUSTER_UPDATE)(slot, dt, owner) };
     unsafe { tag_flames(slot + THRUSTER_SLOT_SFX_OFFSET, owner) };
     result
 }
 
 unsafe extern "system" fn multi_update_impl(slot: usize, dt: f32, owner: *const usize) -> u64 {
-    let game_update: SlotUpdateFn = unsafe { std::mem::transmute(MULTI_UPDATE_ADDR) };
-    let result = unsafe { game_update(slot, dt, owner) };
+    let result = unsafe { orig::<SlotUpdateFn>(&ORIG_MULTI_UPDATE)(slot, dt, owner) };
     unsafe { tag_flames(slot + MULTI_SFX_SLOT_SFX_OFFSET, owner) };
     result
 }

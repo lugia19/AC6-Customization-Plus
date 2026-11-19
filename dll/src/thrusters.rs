@@ -109,7 +109,7 @@ fn poll_loop() {
             FLAME_TYPE.store((choice as f32).to_bits(), Ordering::Relaxed);
             log(&format!("thrusters: flame type {}", FLAME_TYPES.get(choice as usize).copied().unwrap_or("?")));
         }
-        let Some(rgb) = rows::color(ROW_THRUSTER) else { continue };
+        let Some(rgb) = rows::color(ROW_THRUSTER, 0) else { continue };
         if last != Some(rgb) {
             last = Some(rgb);
             set_channels(rgb);
@@ -118,11 +118,12 @@ fn poll_loop() {
     }
 }
 
+pub(crate) fn claim_row() {
+    // The accent color isn't used by the flames yet: meant for the ALLMIND type's assault boost.
+    rows::claim(ROW_THRUSTER, "THRUSTER", DEFAULT_COLOR, Some(("Flame type", &FLAME_TYPES, 0)), Some(("Accent color", DEFAULT_COLOR)));
+}
+
 pub(crate) fn start() {
-    rows::claim(ROW_THRUSTER, "THRUSTER", DEFAULT_COLOR);
-    rows::set_choices(ROW_THRUSTER, "Flame type", &FLAME_TYPES, 0);
-    // Not used by the flames yet: meant for the ALLMIND type's assault boost accent.
-    rows::set_second_color(ROW_THRUSTER, "Accent color", DEFAULT_COLOR);
     set_channels(DEFAULT_COLOR);
     std::thread::spawn(poll_loop);
 }

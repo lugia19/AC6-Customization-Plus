@@ -48,8 +48,10 @@ Coming from 0.1.0 (AC6-Thruster-Customization)? The save file has a new name: re
 
 ## Known issues
 
-- The Paint screen's pattern thumbnail can stop updating after going in and out of it a few times. That's an me3 bug
-  with overridden menu files, not this mod: [me3#902](https://github.com/garyttierney/me3/issues/902).
+- The Paint screen's pattern thumbnails can break after going in and out of it, or after a mission: the PATTERN
+  thumbnail stops updating, or some parts' swatches show no pattern. The AC itself keeps it. That's an me3 bug with
+  overridden menu files, not this mod (it happens without the DLL too):
+  [me3#902](https://github.com/garyttierney/me3/issues/902).
 - The new rows' labels and choices are in English in every language.
 
 ## How it works
@@ -76,7 +78,7 @@ Coming from 0.1.0 (AC6-Thruster-Customization)? The save file has a new name: re
 - **DEVICE brightness.** Nothing new is added: the game's own material menu already lists the ten light intensity
   materials (90-99) for DEVICE, with their text and live preview, and the value is ordinary paint data. The DEVICE
   row was just built color-only, with no way into that menu. The row hooks build it like the other color rows,
-  and its panel leads to that menu (`dll/src/device.rs`, `dll/src/panel.rs`).
+  and its panel leads to that menu (`dll/src/panel.rs`).
 - **HUD.** The game loads the HUD movie (`menu/01_000_fe.gfx`) once and builds each mission's HUD from it. The
   package ships a prepared copy of it. Every time a sortie asks for the movie, the DLL reads the HUD rows,
   drops the loaded movie and hands the game's loader a copy of the file it opened at boot, rewritten for them

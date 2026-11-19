@@ -13,6 +13,7 @@
 //! over ours), the rows do nothing.
 
 use std::sync::Mutex;
+use std::thread::ThreadId;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::hud_movie::{self, Look};
@@ -54,14 +55,29 @@ static ORIG_OPEN_FILE: AtomicUsize = AtomicUsize::new(0);
 // The file the game opened for the HUD movie at boot, kept alive: the base for every later load.
 static BASE_FILE: AtomicUsize = AtomicUsize::new(0);
 
-/// What the HUD movie's lookup wants done with the next file the game opens: that file is the movie's (the path
-/// can't tell: mod loaders rename overridden files).
+/// What the HUD movie's lookup wants done with the next file the game opens on its thread, inside the lookup: that
+/// file is the movie's (the path can't tell: mod loaders rename overridden files).
 enum NextOpen {
     Nothing,
     KeepAsBase,
     Serve(Vec<u8>),
 }
-static NEXT_OPEN: Mutex<NextOpen> = Mutex::new(NextOpen::Nothing);
+static NEXT_OPEN: Mutex<(Option<ThreadId>, NextOpen)> = Mutex::new((None, NextOpen::Nothing));
+
+/// Sets what the next file opened on this thread is for (Nothing: none).
+fn set_next_open(next_open: NextOpen) {
+    let thread = (!matches!(next_open, NextOpen::Nothing)).then(|| std::thread::current().id());
+    *NEXT_OPEN.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = (thread, next_open);
+}
+
+/// Takes what the lookup wants for this file, if it's being opened on the lookup's thread.
+fn take_next_open() -> NextOpen {
+    let mut slot = NEXT_OPEN.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    if slot.0 != Some(std::thread::current().id()) {
+        return NextOpen::Nothing;
+    }
+    std::mem::replace(&mut *slot, (None, NextOpen::Nothing)).1
+}
 
 pub(crate) fn hooks() -> [Hook; 2] {
     [
@@ -108,17 +124,16 @@ unsafe extern "system" fn lookup_impl(system: usize, out: usize, entry: usize) -
             unsafe { release_cached_movie(system) };
         }
     }
-    *NEXT_OPEN.lock().unwrap() = next_open;
+    set_next_open(next_open);
     let result = unsafe { lookup(system, out, entry) };
-    *NEXT_OPEN.lock().unwrap() = NextOpen::Nothing;
+    set_next_open(NextOpen::Nothing);
     result
 }
 
 unsafe extern "system" fn open_file_impl(this: usize, path: *const u8, flags: usize, mode: usize) -> usize {
     let open: OpenFileFn = unsafe { orig(&ORIG_OPEN_FILE) };
     // Taken, so only the first file opened during the lookup counts: the movie itself, not what it imports.
-    let next_open = std::mem::replace(&mut *NEXT_OPEN.lock().unwrap(), NextOpen::Nothing);
-    match next_open {
+    match take_next_open() {
         NextOpen::Nothing => unsafe { open(this, path, flags, mode) },
         NextOpen::KeepAsBase => {
             let file = unsafe { open(this, path, flags, mode) };
@@ -182,19 +197,18 @@ unsafe fn release_cached_movie(system: usize) {
 
 // ---- the rows -----------------------------------------------------------------------------------------------------
 
-pub(crate) fn claim_rows() {
+pub(crate) fn claim_row() {
     let labels = OPACITIES.map(|percent| format!("Opacity {percent}%"));
     let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
-    rows::claim(ROW_HUD, "HUD", Look::STOCK.hud);
     // Fully opaque, the last one, is the default.
-    rows::set_choices(ROW_HUD, "Opacity", &labels, OPACITIES.len() as u32 - 1);
-    rows::set_second_color(ROW_HUD, "Warning color", Look::STOCK.warning);
+    let opacity = Some(("Opacity", labels.as_slice(), OPACITIES.len() as u32 - 1));
+    rows::claim(ROW_HUD, "HUD", Look::STOCK.hud, opacity, Some(("Warning color", Look::STOCK.warning)));
 }
 
 /// What the rows say right now. None while the player's data isn't loaded.
 fn rows_look() -> Option<Look> {
-    let hud = rows::color(ROW_HUD)?;
-    let warning = rows::second_color(ROW_HUD)?;
+    let hud = rows::color(ROW_HUD, 0)?;
+    let warning = rows::color(ROW_HUD, 1)?;
     let opacity = *OPACITIES.get(rows::choice(ROW_HUD)? as usize)?;
     Some(Look { hud, warning, opacity })
 }

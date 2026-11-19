@@ -17,9 +17,60 @@ pub(crate) fn leak_utf16(text: &str) -> &'static [u16] {
     text.encode_utf16().chain([0]).collect::<Vec<u16>>().leak()
 }
 
-unsafe fn game_fn<F: Copy>(address: usize) -> F {
+/// A game function at `address`, typed as `F` (an `unsafe extern "system" fn`).
+pub(crate) unsafe fn game_fn<F: Copy>(address: usize) -> F {
     unsafe { std::mem::transmute_copy(&address) }
 }
+
+// ---- layouts shared by the list code ---------------------------------------------------------------------------------
+
+// A list description's items (0x308 bytes each) and an item's fields.
+const DESCRIPTION_ITEMS_OFFSET: usize = 0xc8;
+const DESCRIPTION_ITEMS_END_OFFSET: usize = 0xd0;
+pub(crate) const ITEM_SIZE: usize = 0x308;
+pub(crate) const ITEM_KIND_OFFSET: usize = 0x98;
+const ITEM_SOUND_OFFSET: usize = 0xa0;
+pub(crate) const ITEM_REFRESH_OFFSET: usize = 0x1b8;
+pub(crate) const ITEM_FLAGS_OFFSET: usize = 0x300;
+// A menu window's child window stack, where the windows it opens are pushed.
+const WINDOW_CHILDREN_OFFSET: usize = 0x10;
+// The edit context: the selected part category, the working paint block.
+const EDIT_CONTEXT_CATEGORY_OFFSET: usize = 0x28;
+const EDIT_CONTEXT_PAINT_OFFSET: usize = 0x40;
+
+/// A description's items, as [start, end).
+pub(crate) unsafe fn items(description: usize) -> (usize, usize) {
+    unsafe {
+        (*((description + DESCRIPTION_ITEMS_OFFSET) as *const usize), *((description + DESCRIPTION_ITEMS_END_OFFSET) as *const usize))
+    }
+}
+
+/// The child window stack of a window (an on-confirm's third argument), or None for no window: pushing on it would
+/// crash.
+pub(crate) fn child_windows(window: usize) -> Option<usize> {
+    (window != 0).then_some(window + WINDOW_CHILDREN_OFFSET)
+}
+
+pub(crate) unsafe fn context_category(context: usize) -> u8 {
+    unsafe { *((context + EDIT_CONTEXT_CATEGORY_OFFSET) as *const u8) }
+}
+
+pub(crate) unsafe fn context_paint(context: usize) -> usize {
+    unsafe { *((context + EDIT_CONTEXT_PAINT_OFFSET) as *const usize) }
+}
+
+/// A sound request {id, priority, kind, name}, as items and confirm jobs carry it.
+#[repr(C)]
+struct Sound {
+    id: u32,
+    priority: u32,
+    kind: u32,
+    unused: u32,
+    name: usize,
+}
+
+/// The game's default confirm sound (as the Size list's items have it).
+const CONFIRM_SOUND: Sound = Sound { id: 100, priority: 2, kind: 1, unused: 0, name: 0x14390ba28 };
 
 // ---- labels ----------------------------------------------------------------------------------------------------------
 
@@ -142,13 +193,24 @@ pub(crate) unsafe fn destroy_handle(handle: usize) {
     }
 }
 
-/// A swatch's "Camouflage" (the paint pattern over it) as "no pattern", for the selected part category: what the
-/// game's swatch refreshes do for a slot the pattern can't apply to (state 0 from 0x140e0c660 -> 0x140f452f0). Never
-/// hide it: a hidden one broke the pattern thumbnails and overlays of the whole Paint screen.
-pub(crate) unsafe fn show_no_pattern(swatch_clip: usize, category: u8) {
-    let set: unsafe extern "system" fn(*mut Handle, u8, *const u8) = unsafe { game_fn(0x140f452f0) };
+/// A color swatch: its color on "Color/Tile" (main list rows) or "Color" (panel entries), as the game's Color entry
+/// picks; its "Camouflage" (the paint pattern over it) on "no pattern" for the selected part category, as the game's
+/// swatch refreshes do for a slot the pattern can't apply to (state 0 from 0x140e0c660 -> 0x140f452f0). Never hide
+/// the Camouflage: a hidden one broke the pattern thumbnails and overlays of the whole Paint screen.
+pub(crate) unsafe fn show_swatch(clip: usize, color: u32, category: u8) {
+    let set_pattern: unsafe extern "system" fn(*mut Handle, u8, *const u8) = unsafe { game_fn(0x140f452f0) };
     let not_applied = 0u8;
-    unsafe { with_clip(swatch_clip, c"Camouflage", |pattern| set(pattern, category, &not_applied)) };
+    unsafe {
+        let mut tile = false;
+        with_clip(clip, c"Color/Tile", |swatch| {
+            swatch.set_color(color);
+            tile = true;
+        });
+        if !tile {
+            with_clip(clip, c"Color", |swatch| swatch.set_color(color));
+        }
+        with_clip(clip, c"Camouflage", |pattern| set_pattern(pattern, category, &not_applied));
+    }
 }
 
 /// Finds `name` under `parent`, does `act` with it if it exists, destroys the handle.
@@ -310,9 +372,6 @@ pub(crate) unsafe fn function_job(out: *mut usize, function: *mut Function) {
 #[repr(C, align(16))]
 pub(crate) struct Description([u8; 0x1000]);
 
-const DESCRIPTION_ITEMS_END_OFFSET: usize = 0xd0;
-const ITEM_SIZE: usize = 0x308;
-pub(crate) const ITEM_REFRESH_OFFSET: usize = 0x1b8;
 // Both kinds of list window here use the game's generic list clip.
 static COMMAND_LIST: [u16; 19] = utf16(b"01_070_CommandList\0");
 
@@ -347,20 +406,18 @@ impl Description {
         unsafe { add(self.address() + 0xb10, label.set(text)) };
     }
 
-    /// Appends a panel entry (0x140d3c600, as the panel builders do); returns the item.
-    pub(crate) unsafe fn add_item(&mut self, label: *mut Label, confirm: *mut Function) -> usize {
-        unsafe { add_item(self.address(), label, confirm) }
-    }
-
     /// Appends an option of an option list (0x140c847e0, as the game's own lists do: with 0x140d3c600 confirming
-    /// an option leaves the list open); returns the item.
+    /// an option leaves the list open), with the default confirm sound; returns the item.
     pub(crate) unsafe fn add_option(&mut self, label: *mut Label, confirm: *mut Function) -> usize {
-        unsafe { append(self.address(), 0x140c847e0, label, confirm) }
+        unsafe {
+            let item = append(self.address(), 0x140c847e0, label, confirm);
+            *((item + ITEM_SOUND_OFFSET) as *mut Sound) = CONFIRM_SOUND;
+            item
+        }
     }
 }
 
-/// Appends an entry to a description the game made (as its row builder and panel builders do, 0x140d3c600);
-/// returns the item.
+/// Appends an entry (0x140d3c600, as the game's row builder and panel builders do); returns the item.
 pub(crate) unsafe fn add_item(description: usize, label: *mut Label, confirm: *mut Function) -> usize {
     unsafe { append(description, 0x140d3c600, label, confirm) }
 }

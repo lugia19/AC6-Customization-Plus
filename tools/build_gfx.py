@@ -1,6 +1,5 @@
 """Builds the Paint movie (02_coloring.gfx) from the stock one: three extra color rows (Item_9_0..Item_11_0) below
-
-WEATHERING in the Paint list, and a panel for them. Everything else stays byte-identical.
+WEATHERING in the Paint list (dll/src/rows.rs's ROW_COUNT), and a panel for them. Everything else stays byte-identical.
 
 usage: build_gfx.py stock.gfx out.gfx
 
@@ -27,10 +26,6 @@ PANEL_TEXTURE_DEPTH = 3  # the texture's placement in the list sprite (character
 NEW_SPRITE_IDS = (398, 399, 400)  # stock's highest character ID is 397
 ROW_LABEL_TEXT = 228  # the rows' label: a DefineEditText (font class, height, color, layout, initial text)
 HEADER_TEXT_ID = 401
-# The material number on the Color / Material panel's icon: a right-aligned text field 500 twips wide, which cuts a
-# third digit off. The other material icons' fields (193, 350) are 800 wide.
-PANEL_MATERIAL_NUMBER_TEXT = 182
-PANEL_MATERIAL_NUMBER_EXTRA_WIDTH = 300
 HEADER = "ENTIRE AC"
 NEW_ROW_DEPTHS = (7, 8, 9)  # free depths in the list sprite
 FIRST_NEW_ROW = 9  # Item_<n>_0
@@ -194,18 +189,6 @@ def panel_rect_matrix(x0, x1, y0, y1):
     return matrix(round(x0 - bx0 * sx), round(y0 - by0 * sy), scale=(sx, sy))
 
 
-def extend_text_field_left(d, text_id, extra):
-    """Moves a DefineEditText's left edge `extra` twips further left."""
-    pos, header, raw = find_tag(d, DEFINE_EDIT_TEXT, text_id)
-    body = raw[header:]
-    rect_size, bounds = read_rect(body, 2)
-    bounds[0] -= extra
-    width, fields = signed_bits(bounds)
-    new = tag(DEFINE_EDIT_TEXT, body[:2] + pack_bits(format(width, "05b") + fields) + body[2 + rect_size:])
-    d[pos:pos + len(raw)] = new
-    struct.pack_into("<I", d, 4, struct.unpack_from("<I", d, 4)[0] + len(new) - len(raw))
-
-
 def header_text(label_text):
     """The header's DefineEditText tag, from the rows' label's (its content): its font class, with our font height,
     color and text."""
@@ -294,7 +277,6 @@ def add_rows_panel(d):
 def main():
     inp, out = sys.argv[1], sys.argv[2]
     d = bytearray(open(inp, "rb").read())
-    extend_text_field_left(d, PANEL_MATERIAL_NUMBER_TEXT, PANEL_MATERIAL_NUMBER_EXTRA_WIDTH)
     used = {struct.unpack_from("<H", raw, h)[0] for _, h, _, raw in tags(d, first_tag_pos(d), len(d)) if len(raw) - h >= 2}
     assert not used & {*NEW_SPRITE_IDS, HEADER_TEXT_ID, ROWS_PANEL_ID}, "a new character's ID may be in use"
     _, label_header, label_raw = find_tag(d, DEFINE_EDIT_TEXT, ROW_LABEL_TEXT)

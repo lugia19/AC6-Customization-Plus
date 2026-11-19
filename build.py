@@ -177,10 +177,11 @@ def main():
     for new_id, source_id in id_map["resources"].items():
         target = os.path.join(reslists, f"f{int(new_id):09d}.ffxreslist")
         assert not os.path.exists(target), f"{new_id} collides with an existing effect"
-        source = f"f{source_id:09d}.ffxreslist"
-        if not os.path.exists(os.path.join(reslists, source)):
-            source = os.path.join(unpacked(allmind), "ResourceList", source)
-        shutil.copy(os.path.join(reslists, source), target)
+        name = f"f{source_id:09d}.ffxreslist"
+        source = os.path.join(reslists, name)
+        if not os.path.exists(source):  # ALLMIND's effects are in their own bnd
+            source = os.path.join(unpacked(allmind), "ResourceList", name)
+        shutil.copy(source, target)
 
     # Params: each custom type t+3 uses what stock type t uses, as its wrapper in the thruster table and unchanged in
     # the replace table (or a Coral generator would fall back to the non-Coral versions), and every player generator

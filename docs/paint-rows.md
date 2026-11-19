@@ -173,7 +173,7 @@ rebuilds the screen from the new file.
 
 ## DEVICE's brightness
 
-Two of the row hooks also bring back the DEVICE row's hidden setting (`dll/src/device.rs`): is-normal-slot answers
+Two of the row hooks also bring back the DEVICE row's hidden setting (`dll/src/panel.rs`): is-normal-slot answers
 true for DEVICE, so its row is built like MAIN..OTHER, and the panel switch gets a panel from `panel.rs` for slot
 5: the game's own Color entry (`0x140f3b1c0(screen, desc, 5, label)`) and a Brightness entry doing what the game's
 Material entry would for slot 5. Its confirm opens the stock material picker, `0x140f38320(screen, out, a3 + 0x10,
@@ -197,20 +197,13 @@ Dropped or parked:
   stock material menu through hooks on the first material, the material reader and writer and both material text
   functions, and the panel came from the game's builder for the row's made-up slot. Replaced by the panel's own
   entries, which need none of that.
-- Redirecting a color-only row's confirm to the panel (instead of building a normal row) crashes: the color picker
-  opened from the panel runs `0x140f40a50`, which expects what a normal row captures.
-- Reusing DEVICE's materials (90-99) as choices, with the first material set to 100 - N for N choices: worked, but a
-  material then means different things per row, so the panel's text function (which only gets the material) would
-  have to know which row is open. Own IDs per row avoid that.
-- Per-part rows (idea, nothing needs it): a mode chosen at claim time where the row keeps one color per part
-  section (10: head, core, arms, legs, hand weapons, back units, extension) instead of one for the AC. It fits in the
-  row's own section, which has exactly ten color fields (6 colors + 4 pattern colors); the get/set hooks would use
-  the selected part category instead of ignoring it, and the readers would take a part. Not checked: whether
-  the game normalises the pattern color fields of the free sections on load. Not for thrusters: flames belong to
-  the booster and sit on core and legs only, and the ownership chain gives the AC, not the body part.
+- Per-part rows (idea, nothing needs it): a row keeping one color per part section (10: head, core, arms, legs, hand
+  weapons, back units, extension) instead of one for the AC. It fits in the row's own section, which has exactly ten
+  color fields (6 colors + 4 pattern colors); the swatch and panel would read and write the selected category's.
+  Not checked: whether the game normalises the pattern color fields of the free sections on load. Not for
+  thrusters: flames belong to the booster and sit on core and legs only, and the ownership chain gives the AC.
 
 Other findings:
 - Paint writers next to the color one (`0x14045afc0`, +8): `0x14045aee0` pattern design (+0x2c), `0x14045af90`
   pattern size (+0x2d), `0x14045af30` pattern color (+0x30), `0x14045b020` weathering (+4), `0x14045b070` material
   (+0x20 + slot * 2; reached from `0x140e0d100`).
-- Not identified: the third caller of the slot label function (`0x140f38c01`); the hook serves any caller.
