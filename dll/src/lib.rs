@@ -17,7 +17,6 @@
 
 mod hud;
 mod hud_movie;
-mod memlog; // TEMPORARY
 mod paint_data;
 mod player_flames;
 mod panel;
@@ -104,7 +103,6 @@ fn init() {
         Ok(()) => {
             log("hooks installed");
             thrusters::start();
-            memlog::start(); // TEMPORARY
         }
         Err(e) => log(&format!("not hooked: {e}")),
     }
