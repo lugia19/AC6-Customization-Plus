@@ -63,19 +63,15 @@ Coming from 0.1.0 (AC6-Thruster-Customization)? The save file has a new name: re
   the game's color picker, and option lists like the pattern's Size. A row keeps its colors and choice in a part of
   the AC's paint data the game never uses, which is why a row is one value for the whole AC and not per part.
   Details: [docs/paint-rows.md](docs/paint-rows.md).
-- **Flames.** Every player generator gets a new thruster color type, whose flames are wrapper effects built by
-  `fxr/build_fxrs.mjs`. Enemy ACs use the same generators, so when a wrapper spawns, it asks the DLL whether it's on
-  your AC. The DLL knows exactly: every character drives its effects through its own slots, and the DLL tags each
-  flame with the owner of the slot that spawned it, so an enemy AC's flames stay stock even when it's touching you
-  (details and how it was confirmed: [docs/ownership.md](docs/ownership.md)). One pair of flames in the arena intro cutscene comes
-  from the cutscene rather than your AC and plays stock. Yours play two recolored copies of the stock flame, one adding the color and one subtracting what the color lacks
-  (that's what makes dark colors work). It decides once and sticks to it, since a flame it already started keeps
-  playing even if it switches.
-- **Flame types.** The game keeps a flame per thruster effect and generator type (combustion, current, Coral): 20
-  effects, three flames each. Every wrapper knows its effect's three flames, and on your AC plays the recolored
-  copies of the one for the type you chose (served to the effects as another external value). ALLMIND is a boss,
-  not an AC, with thruster effects of its own; its type plays the current flame or the boss's effects (in
-  `sfxbnd_m30`, scaled down for an AC). Each of those is drawn twice, once in the accent color and once in the
+- **Flames.** The game keeps a flame per thruster effect and generator color type (combustion, current, Coral): 20
+  effects, a column per type. The regulation adds four columns, one per flame type, pointing at effects built by
+  `fxr/build_fxrs.mjs` that play recolored copies of that type's flame: one adding the color and one subtracting what
+  the color lacks (that's what makes dark colors work). Each time a character's thrusters fire, the game asks for its
+  generator's color type to pick the column; the DLL hooks that question and answers with your flame type's column
+  for your AC only, so every other AC, even with the same generator, keeps its stock flames. The same column picks the
+  core expansions' effects, which follow the flame type's stock look (a Coral type gets the Coral ones).
+- **Flame types.** ALLMIND is a boss, not an AC, with thruster effects of its own; its type plays the current flame
+  or the boss's effects (in `sfxbnd_m30`, scaled down for an AC). Each of those is drawn twice, once in the accent color and once in the
   thruster color, weighted by the particle's age, and the two add up to the fade (an effect can only multiply in the
   values the DLL serves, so one particle can't blend two of them; the copies share their random seeds, so they line up).
 - **DEVICE brightness.** Nothing new is added: the game's own material menu already lists the ten light intensity

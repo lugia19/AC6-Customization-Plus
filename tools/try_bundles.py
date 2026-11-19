@@ -1,9 +1,9 @@
-"""Development helper: rebuilds only the flame wrappers (fxr/build_fxrs.mjs) and reloads them in the running game with an FXR reloader, so a change shows on the next flame that spawns
+"""Development helper: rebuilds only the flame bundles (fxr/build_fxrs.mjs) and reloads them in the running game with an FXR reloader, so a change shows on the next flame that spawns
 without a restart. Needs a finished build.py run (it uses build/'s unpacked effects and flame rows).
 
-    python tools/try_wrappers.py --reloader "<...>/fxr-reloader-cli.exe"
+    python tools/try_bundles.py --reloader "<...>/fxr-reloader-cli.exe"
 
-The reloaded wrappers only live in the game's memory: run build.py to put them in the package.
+The reloaded bundles only live in the game's memory: run build.py to put them in the package.
 """
 import argparse
 import glob
@@ -22,12 +22,12 @@ def main():
 
     effect_dir = os.path.join(WORK, "sfxbnd_commoneffects-ffxbnd-dcx-wffxbnd", "effect")
     assert os.path.exists(os.path.join(WORK, "flame_rows.json")), "run build.py first: this uses its build/ folder"
-    wrappers = os.path.join(WORK, "wrappers")
-    shutil.rmtree(wrappers, ignore_errors=True)
-    os.makedirs(wrappers)
+    bundles = os.path.join(WORK, "bundles")
+    shutil.rmtree(bundles, ignore_errors=True)
+    os.makedirs(bundles)
     subprocess.run(["node", "build_fxrs.mjs", effect_dir, os.path.join(WORK, "id_map.json"),
                     os.path.join(WORK, "flame_rows.json"),
-                    os.path.join(WORK, "sfxbnd_m30-ffxbnd-dcx-wffxbnd", "effect"), wrappers],
+                    os.path.join(WORK, "sfxbnd_m30-ffxbnd-dcx-wffxbnd", "effect"), bundles],
                    cwd=os.path.join(ROOT, "fxr"), check=True, shell=os.name == "nt")
 
     tasks = subprocess.run(["tasklist", "/FI", "IMAGENAME eq armoredcore6.exe", "/FO", "CSV", "/NH"],
@@ -36,9 +36,9 @@ def main():
     assert rows, "the game isn't running"
     # From its own folder: it loads its agent DLL from there.
     reloader = os.path.abspath(args.reloader)
-    subprocess.run([reloader, "--process-id", rows[0][1], "--fxrs", *sorted(glob.glob(os.path.join(wrappers, "*.fxr")))],
+    subprocess.run([reloader, "--process-id", rows[0][1], "--fxrs", *sorted(glob.glob(os.path.join(bundles, "*.fxr")))],
                    cwd=os.path.dirname(reloader), check=True)
-    print("wrappers reloaded")
+    print("bundles reloaded")
 
 
 if __name__ == "__main__":

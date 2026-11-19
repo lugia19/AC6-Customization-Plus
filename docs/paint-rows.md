@@ -210,7 +210,7 @@ Dropped or parked:
   weapons, back units, extension) instead of one for the AC. It fits in the row's own section, which has exactly ten
   color fields (6 colors + 4 pattern colors); the swatch and panel would read and write the selected category's.
   Not checked: whether the game normalises the pattern color fields of the free sections on load. Not for
-  thrusters: flames belong to the booster and sit on core and legs only, and the ownership chain gives the AC.
+  thrusters: flames belong to the booster and sit on core and legs only, and the type hook gives the AC.
 
 Other findings:
 - Paint writers next to the color one (`0x14045afc0`, +8): `0x14045aee0` pattern design (+0x2c), `0x14045af90`

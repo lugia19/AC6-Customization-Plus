@@ -20,13 +20,13 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 WORK = os.path.join(ROOT, "build")
 PACKAGE = os.path.join(ROOT, "package")
 
-# thrustersColorType N uses ThrustersSfxIdParam_PC column sfxIdN. Stock types 0-2 (orange, blue, Coral) get custom
-# types 3-5 (unused in vanilla), whose flames are wrappers that play the stock flame or custom copies tinted with the
-# player's color, depending on whether they're on the player's AC (see fxr/build_fxrs.mjs, dll/src/player_flames.rs).
+# Thruster color type N uses column sfxIdN of the generator-dependent effect tables. Stock types 0-2 (orange, blue,
+# Coral); the flame types are custom types 3-6 (unused in vanilla): combustion, current, Coral, ALLMIND, whose flames
+# are bundles of copies tinted with the player's color (fxr/build_fxrs.mjs). Only the player's AC gets them: the DLL
+# hooks the type (dll/src/thrusters.rs). Elsewhere a custom type uses what stock type CUSTOM_TYPES_STOCK[k] does.
 STOCK_COLOR_TYPES = (0, 1, 2)
-CUSTOM_TYPE_SHIFT = 3
-# Player generators are 650xxxxx; the NPC versions (659xxxxx) are only used by special ACs and stay untouched.
-NPC_GENERATOR_IDS_START = 65900000
+FIRST_CUSTOM_TYPE = 3
+CUSTOM_TYPES_STOCK = (0, 1, 2, 1)
 # Thruster effect rows that stay stock: the exhaust fumes (smoke only, no flame).
 STOCK_FLAME_ROWS = {410031}
 
@@ -135,7 +135,7 @@ def main():
     params = unpacked(regulation)
     # The generator-dependent effect tables: row = an effect the game spawns, column t (sfxId<t>) = what it uses for
     # generator color type t, -1 = the row's own effect (e.g. row 1003010, the assault boost startup flare, has no
-    # columns: one flare for every type). Thrusters: the flames, which get custom wrappers. Replace (no paramdef, 8 s32
+    # columns: one flare for every type). Thrusters: the flames, which get custom bundles. Replace (no paramdef, 8 s32
     # columns): everything else that depends on the generator (assault armor, pulse armor...), which stays stock.
     thrusters = Param(os.path.join(params, "ThrustersSfxIdParam_PC.param"), os.path.join(defs, "ThrustersSfxIdParam.xml"))
     replace = Param(os.path.join(params, "GeneratorTypeSfxIdRplace_PC.param"),
@@ -147,32 +147,32 @@ def main():
 
     effect_dir = os.path.join(unpacked(effects), "effect")
     # Each row's flames for the three stock types (row 0 has none). A flame is one row's, for one type (or the same
-    # for every type): its wrapper can then offer the row's others.
-    flame_rows = []
+    # for every type): its bundle ID can then derive from it.
+    flame_rows = {}
     row_of = {}
     for row in sorted(thrusters.rows):
         flames = [effect_for(thrusters, row, t) for t in STOCK_COLOR_TYPES]
         if row in STOCK_FLAME_ROWS or -1 in flames:
             continue
-        flame_rows.append(flames)
+        flame_rows[row] = flames
         for flame in flames:
             assert row_of.setdefault(flame, flames) == flames, f"stock flame {flame} is in rows with different flames"
 
-    # Custom flames: a wrapper per stock flame, plus two custom copies of each (see fxr/build_fxrs.mjs).
+    # Custom flames: a bundle per row and flame type, playing custom copies (see fxr/build_fxrs.mjs).
     fxr_dir = os.path.join(ROOT, "fxr")
     shell = os.name == "nt"
     if not os.path.isdir(os.path.join(fxr_dir, "node_modules")):
         subprocess.run(["npm", "install"], cwd=fxr_dir, check=True, shell=shell)
     id_map_path = os.path.join(WORK, "id_map.json")
     flame_rows_path = os.path.join(WORK, "flame_rows.json")
-    json.dump(flame_rows, open(flame_rows_path, "w"))
+    json.dump(list(flame_rows.values()), open(flame_rows_path, "w"))
     subprocess.run(["node", "build_fxrs.mjs", effect_dir, id_map_path, flame_rows_path,
                     os.path.join(unpacked(allmind), "effect")], cwd=fxr_dir,
                    check=True, shell=shell)
     id_map = json.load(open(id_map_path))
-    wrapper_of = {int(stock): wrapper for stock, wrapper in id_map["wrappers"].items()}
+    bundles_of = dict(zip(flame_rows, id_map["bundles"]))
     # The copies use their sources' textures and models. WitchyBND would generate empty resource lists for them (fine
-    # for the wrappers, which only hold proxies).
+    # for the bundles, which only hold proxies).
     reslists = os.path.join(unpacked(effects), "ResourceList")
     for new_id, source_id in id_map["resources"].items():
         target = os.path.join(reslists, f"f{int(new_id):09d}.ffxreslist")
@@ -183,33 +183,22 @@ def main():
             source = os.path.join(unpacked(allmind), "ResourceList", name)
         shutil.copy(source, target)
 
-    # Params: each custom type t+3 uses what stock type t uses, as its wrapper in the thruster table and unchanged in
-    # the replace table (or a Coral generator would fall back to the non-Coral versions), and every player generator
-    # with a stock color type switches to its custom type.
-    for table, mapping in [(thrusters, wrapper_of), (replace, {})]:
+    # Params: the custom types' columns, a flame row's bundles in the thruster table, what the matching stock type uses
+    # everywhere else (e.g. a Coral flame type gets the Coral expansion effects).
+    for table, bundles in [(thrusters, bundles_of), (replace, {})]:
         for row in table.rows:
-            for t in STOCK_COLOR_TYPES:
-                column = f"sfxId{t + CUSTOM_TYPE_SHIFT}"
+            for k, t in enumerate(CUSTOM_TYPES_STOCK):
+                column = f"sfxId{FIRST_CUSTOM_TYPE + k}"
                 assert table.get(row, column) == -1, f"{os.path.basename(table.path)} row {row}: {column} in use"
-                stock = effect_for(table, row, t)
-                if stock != -1:
-                    table.set(row, column, mapping.get(stock, stock))
+                sfx = bundles[row][k] if row in bundles else effect_for(table, row, t)
+                if sfx != -1:
+                    table.set(row, column, sfx)
         table.save()
-    generators = Param(os.path.join(params, "EquipParamGenerator.param"), os.path.join(defs, "EquipParamGenerator.xml"))
-    switched = 0
-    for row in generators.rows:
-        color_type = generators.get(row, "thrustersColorType")
-        if row < NPC_GENERATOR_IDS_START and color_type in STOCK_COLOR_TYPES:
-            generators.set(row, "thrustersColorType", color_type + CUSTOM_TYPE_SHIFT)
-            switched += 1
-    assert switched, "no generator had a stock thruster color type"
-    generators.save()
-    print(f"{switched} player generators switched to their custom flames")
 
-    # The THRUSTER row's choices (dll/src/thrusters.rs FLAME_TYPES): "generator's own" and the wrappers' flame types.
-    flame_types = 1 + id_map["flameTypes"]
+    # The THRUSTER row's choices (dll/src/thrusters.rs FLAME_TYPES): "generator's own" and the custom flame types.
+    flame_types = 1 + len(CUSTOM_TYPES_STOCK)
     labels = re.search(r"const FLAME_TYPES: \[&str; (\d+)\]", open(os.path.join(ROOT, "dll", "src", "thrusters.rs")).read())
-    assert int(labels.group(1)) == flame_types, f"thrusters.rs names {labels.group(1)} flame types, the wrappers have {flame_types}"
+    assert int(labels.group(1)) == flame_types, f"thrusters.rs names {labels.group(1)} flame types, the params have {flame_types}"
 
     witchy([unpacked(a) for a in archives], archives)
 

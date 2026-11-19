@@ -2,14 +2,14 @@
 //! row's hidden brightness setting.
 //! - rows.rs: the extra rows themselves (a color, optionally a choice and a second color; saved with the AC).
 //! - panel.rs: the rows' panels, and DEVICE's (its brightness); ui.rs: the game's menu plumbing they use.
-//! - thrusters.rs, player_flames.rs: the THRUSTER row on the player's thruster flames.
+//! - thrusters.rs: the GENERATOR row on the player's thruster flames.
 //! - hud.rs, hud_movie.rs: the HUD row (color, opacity, warning color) on the in-mission HUD.
 //!
 //! Hooks:
 //! - 4 Paint list functions, in rows.rs; the panels' setup and the material text (DEVICE's labels), in panel.rs.
-//! - 0x142b56480 FXR external value read: serves the color to the flames, in thrusters.rs.
+//! - 0x142b56480 FXR external value read and 0x140829de0 a character's generator color type: the player's flame type
+//!   and color, in thrusters.rs.
 //! - 0x141609040 menu movie lookup and 0x1415f40b0 the Scaleform file opener: the HUD's look, in hud.rs.
-//! - The two flame-carrying slot updates: whether a flame is the player's, in player_flames.rs.
 //! The game's Arxan protection restores code it guards to its original bytes at irregular times, silently removing
 //! hooks: the mod's me3 profile turns it off (disable_arxan).
 //!
@@ -18,7 +18,6 @@
 mod hud;
 mod hud_movie;
 mod paint_data;
-mod player_flames;
 mod panel;
 mod rows;
 mod thrusters;
@@ -61,11 +60,10 @@ pub(crate) unsafe fn orig<F: Copy>(trampoline: &AtomicUsize) -> F {
 pub(crate) type Hook = (usize, [u8; 6], *const (), &'static AtomicUsize);
 
 fn install() -> Result<(), String> {
-    let mut hooks: Vec<Hook> = vec![thrusters::hook()];
+    let mut hooks: Vec<Hook> = thrusters::hooks().into();
     hooks.extend(rows::hooks());
     hooks.extend(hud::hooks());
     hooks.extend(panel::hooks());
-    hooks.extend(player_flames::hooks());
     for &(addr, bytes, _, _) in &hooks {
         let actual = unsafe { std::slice::from_raw_parts(addr as *const u8, bytes.len()) };
         // A jmp means another DLL hooked it first; the detours chain fine.

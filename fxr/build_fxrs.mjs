@@ -1,7 +1,7 @@
 // Builds the custom generator flames. The game has a flame per effect row and generator type (combustion, current, Coral):
-// the given rows, three stock thruster FXRs each. For every stock FXR S in them:
-// - a wrapper at S + WRAPPER_OFFSET (what the params point at), which plays either the stock S or, on the player's AC,
-//   two custom copies together: of S, or of its row's flame for the flame type the player chose (see wrapper());
+// the given rows, three stock thruster FXRs each. Only the player's AC gets the custom types (the DLL hooks the
+// generator type, dll/src/thrusters.rs). For every stock FXR S in them:
+// - a bundle at S + BUNDLE_OFFSET (what the custom type's column points at), which plays the two copies of S together;
 // - the copies at S + MAIN.offsets (add, remove): plain copies of S (and of every FXR S references, remapped to
 //   the same copy), every color whitened to its brightness and tinted by external values the DLL serves
 //   for the player's thruster color (dll/src/thrusters.rs set_channels):
@@ -10,14 +10,15 @@
 //   - remove: the additive particles again, subtracting what the color lacks from the background, so dark colors
 //     darken it (additive flames can't get darker than what's behind them). Nothing for bright colors.
 // A fourth flame type, ALLMIND, plays the boss's own effects on some rows (ALLMIND), every flame fading from the accent
-// color to the thruster color (two more pairs of copies; the accent is a second set of external values).
+// color to the thruster color (two more pairs of copies; the accent is a second set of external values), in a bundle at
+// the row's current flame + ALLMIND_BUNDLE_OFFSET.
 // Usage: node build_fxrs.mjs <unpacked sfxbnd_commoneffects effect dir> <id map json out> <rows json>
-//        <unpacked sfxbnd_m30 effect dir> [wrappers dir]
+//        <unpacked sfxbnd_m30 effect dir> [bundles dir]
 // (rows: a list of [combustion, current, Coral] stock FXR IDs)
-// Writes the new FXRs into the effect dir, and a map {wrappers: {stock id: wrapper id}, resources: {new id: source id},
-// flameTypes: how many types a wrapper offers} (each new FXR needs its source's resource list; wrappers only hold
+// Writes the new FXRs into the effect dir, and a map {bundles: per row, its bundle per flame type (combustion, current,
+// Coral, ALLMIND), resources: {new id: source id}} (each new FXR needs its source's resource list; bundles only hold
 // proxies).
-// With a wrappers dir, only the wrappers and the copies of the boss's effects are built, into it, overwriting, and no
+// With a bundles dir, only the bundles and the copies of the boss's effects are built, into it, overwriting, and no
 // map: for trying them in the running game with an FXR reloader.
 import {
   ActionType,
@@ -45,15 +46,11 @@ const MAIN = { ext: 900001, offsets: [9100000, 9200000] } // the thruster color
 // a thruster color copy, weighted so that the two (additive) add up to the fade.
 const FADING_ACCENT = { ext: 900012, offsets: [9300000, 9400000], accent: true }
 const FADING_MAIN = { ext: 900001, offsets: [9500000, 9600000], accent: false }
-// Whether the flame is on the player's AC (dll/src/player_flames.rs): 0 not known yet (or no DLL), 1 someone else's,
-// 2 the player's.
-const EXT_PLAYERS_FLAME = 900010
-// The flame type the player chose (dll/src/thrusters.rs): 0 the generator's own, 1 + a type (0 combustion, 1 current,
-// 2 Coral, 3 ALLMIND) otherwise.
-const EXT_FLAME_TYPE = 900011
 // Game value: the spawner's termination signal.
 const EXT_TERMINATE = 0
-const WRAPPER_OFFSET = 9000000
+// Bundle IDs: a row's flame for a stock type + BUNDLE_OFFSET; its current flame + ALLMIND_BUNDLE_OFFSET for ALLMIND.
+const BUNDLE_OFFSET = 9000000
+const ALLMIND_BUNDLE_OFFSET = 8000000
 
 // How a flame fades: BY_AGE, each particle from the accent at birth to the thruster color at FADE_TIME (seconds);
 // BY_HUE, where the boss's own effect fades from mint to cyan (weighted by how far each color is from mint (1)
@@ -282,51 +279,10 @@ function allmindEffects(rowFlames) {
 // The effects of each flame type for a row, as [effect, copy kind, how it fades]: the row's flames, then ALLMIND.
 const flameTypes = rowFlames => [...rowFlames.map(flame => [[flame, MAIN, null]]), allmindEffects(rowFlames)]
 
-// The wrapper for stock flame `stockId`, which is its row's flame for generator type `ownType`: a child node per effect
-// it can play (a proxy to it). STOCK enables the stock flame; CUSTOM + a type enables both copies of each effect of
-// that type. The choice is made once, at spawn, and kept: a proxy's effect keeps playing after its node is
-// disabled (switching from stock to custom left the stock flame running under the custom one), so a wrapper may only
-// ever enable one of them. Conditions are checked in order, first match wins:
-// - DECIDING (shows nothing): no DLL (its color values read 0) -> STOCK; the player's flame -> PICKING; someone else's
-//   -> STOCK; still not known after 0.3 s -> STOCK (the DLL answers on the owner's next slot update, a frame after
-//   the spawn; the wait only lasts while there's no answer, e.g. a flame a cutscene spawned).
-// - PICKING (shows nothing): the chosen flame type's CUSTOM state; the generator's own type if none is chosen.
-// - STOCK, CUSTOM + type: only end with the effect.
-function wrapper(stockId, rowFlames, ownType) {
-  const playersFlame = `External(${EXT_PLAYERS_FLAME})`
-  const flameType = `External(${EXT_FLAME_TYPE})`
-  const terminate = `External(${EXT_TERMINATE}) >= 1 then terminate`
-  const STOCK = 1, PICKING = 2, CUSTOM = 3 // DECIDING is 0, where an effect starts
-  const types = flameTypes(rowFlames)
-  // The served value is 1 + the type: highest first, since the first match wins.
-  const pick = types.map((_, type) => `${flameType} >= ${type + 1} then ${CUSTOM + type}`).reverse()
-  const states = [
-    // DECIDING
-    State.from([
-      terminate,
-      `External(${MAIN.ext}) < 1 then ${STOCK}`,
-      `${playersFlame} >= 2 then ${PICKING}`,
-      `${playersFlame} >= 1 then ${STOCK}`,
-      `StateTime > 0.3 then ${STOCK}`,
-    ]),
-    // STOCK
-    State.from([terminate]),
-    // PICKING
-    State.from([terminate, ...pick, `${flameType} < 1 then ${CUSTOM + ownType}`]),
-    // CUSTOM...
-    ...pick.map(() => State.from([terminate])),
-  ]
-  // A node with `actions` over `nodes`, enabled (config 0) only in `state`, disabled (-1) in the others.
-  const inState = (state, actions, nodes) => {
-    const configPerState = states.map((_, s) => (s === state ? 0 : -1))
-    return new BasicNode(actions, nodes).mapStates(...configPerState)
-  }
-  const child = (sfx, state) => inState(state, [], [new ProxyNode(sfx)])
-  return new FXR(stockId + WRAPPER_OFFSET, states, [
-    child(stockId, STOCK),
-    ...types.flatMap((effects, type) =>
-      effects.flatMap(([sfx, color]) => color.offsets.map(offset => child(sfx + offset, CUSTOM + type)))),
-  ])
+// The bundle a row's flame type plays (what its custom column points at): every copy of every effect of the type.
+function bundle(id, effects) {
+  const proxies = effects.flatMap(([sfx, kind]) => kind.offsets.map(offset => new ProxyNode(sfx + offset)))
+  return new FXR(id, [State.from([`External(${EXT_TERMINATE}) >= 1 then terminate`])], [new BasicNode([], proxies)])
 }
 
 // Ends with its spawner; every repeating emitter and every plain container runs forever. One-time particles (a start
@@ -346,9 +302,8 @@ function makeContinuous(fxr) {
   }
 }
 
-const [effectDir, idMapPath, rowsPath, allmindDir, wrappersDir] = process.argv.slice(2)
+const [effectDir, idMapPath, rowsPath, allmindDir, bundlesDir] = process.argv.slice(2)
 const rows = JSON.parse(fs.readFileSync(rowsPath, 'utf8'))
-const stockIds = [...new Set(rows.flat())]
 const fileName = id => `f${String(id).padStart(9, '0')}.fxr`
 const file = id => path.join(effectDir, fileName(id))
 // The boss's effects are in their own archive.
@@ -358,12 +313,12 @@ const sourceFile = id => (isAllmind(id) ? path.join(allmindDir, fileName(id)) : 
 // reads from the pool's start.
 const read = id => FXR.read(sourceFile(id), Game.ArmoredCore6)
 // The effect dir is a fresh unpack of the game's effects, so an existing file at a new ID is a stock effect. The
-// wrappers dir is ours to overwrite.
+// bundles dir is ours to overwrite.
 const saved = new Set()
 async function save(fxr) {
   if (saved.has(fxr.id)) throw new Error(`${fxr.id} built twice`)
   saved.add(fxr.id)
-  if (wrappersDir) return fxr.saveAs(path.join(wrappersDir, fileName(fxr.id)), Game.ArmoredCore6)
+  if (bundlesDir) return fxr.saveAs(path.join(bundlesDir, fileName(fxr.id)), Game.ArmoredCore6)
   if (fs.existsSync(file(fxr.id))) throw new Error(`${fxr.id} would overwrite an existing effect`)
   await fxr.saveAs(file(fxr.id), Game.ArmoredCore6)
 }
@@ -389,7 +344,7 @@ while (pending.length) {
 // Both copies of each: the boss's effects changed for an AC first, then faded, recolored, proxies remapped.
 const resources = {}
 for (const [sfx, color, fade] of jobs.values()) {
-  if (wrappersDir && !isAllmind(sfx)) continue
+  if (bundlesDir && !isAllmind(sfx)) continue
   for (const [index, offset] of color.offsets.entries()) {
     const fxr = await read(sfx)
     const changes = ALLMIND_CHANGES[sfx] ?? {}
@@ -407,19 +362,19 @@ for (const [sfx, color, fade] of jobs.values()) {
   }
 }
 
-// A stock flame is one row's, for one type; a row with the same flame for every type gets one wrapper.
-const wrappers = {}
+// Each row's bundles, one per flame type. A stock flame is one row's (build.py checks), so a row with the same flame
+// for several types gets one bundle.
+const bundles = []
 for (const rowFlames of rows) {
-  for (const [type, stockId] of rowFlames.entries()) {
-    if (stockId in wrappers) continue
-    const fxr = wrapper(stockId, rowFlames, type)
-    await save(fxr)
-    wrappers[stockId] = fxr.id
+  const ids = [...rowFlames.map(flame => flame + BUNDLE_OFFSET), rowFlames[CURRENT] + ALLMIND_BUNDLE_OFFSET]
+  for (const [type, effects] of flameTypes(rowFlames).entries()) {
+    if (!saved.has(ids[type])) await save(bundle(ids[type], effects))
   }
+  bundles.push(ids)
 }
-if (wrappersDir) {
-  console.log(`${Object.keys(wrappers).length} wrappers and the boss's effects in ${wrappersDir}`)
+if (bundlesDir) {
+  console.log(`${saved.size - Object.keys(resources).length} bundles and the boss's effects in ${bundlesDir}`)
 } else {
-  fs.writeFileSync(idMapPath, JSON.stringify({ wrappers, resources, flameTypes: rows[0].length + 1 }, null, 1))
-  console.log(`${stockIds.length} wrappers, ${Object.keys(resources).length} copies (${jobs.size} effect colors)`)
+  fs.writeFileSync(idMapPath, JSON.stringify({ bundles, resources }, null, 1))
+  console.log(`${saved.size - Object.keys(resources).length} bundles, ${Object.keys(resources).length} copies (${jobs.size} effect colors)`)
 }
