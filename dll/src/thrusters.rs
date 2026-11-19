@@ -190,7 +190,7 @@ fn poll_loop() {
 }
 
 pub(crate) fn claim_row() {
-    let extra_colors = [("Accent color", DEFAULT_ACCENT), ("Expansion color", DEFAULT_EXPANSION_COLOR)];
+    let extra_colors = [("Accent color (ALLMIND type only)", DEFAULT_ACCENT), ("Expansion color", DEFAULT_EXPANSION_COLOR)];
     rows::claim(ROW_THRUSTER, "GENERATOR", (Some("Thruster color"), DEFAULT_COLOR), &extra_colors,
         Some(("Flame type", &FLAME_TYPES, 0)));
 }
