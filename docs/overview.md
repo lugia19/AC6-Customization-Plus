@@ -35,7 +35,7 @@ weapon parts, nobody's hits get the copies, the HUD movie is used as shipped (it
 the player and paint data pointer chains). One thread (`lib.rs` update loop) applies changed settings every 200 ms.
 Log: `Game\debug-logs\customization_plus.log`.
 
-Hooks (17). The game's Arxan protection puts back code it guards at irregular times, removing hooks, so the me3
+Hooks (18). The game's Arxan protection puts back code it guards at irregular times, removing hooks, so the me3
 profile turns it off (`disable_arxan`).
 
 | Hook | Function | For |
@@ -50,6 +50,7 @@ profile turns it off (`disable_arxan`).
 | `0x142b56480` | FXR external value read | serves the colors (ext_values.rs) |
 | `0x140829de0` | a character's generator color type | the player's column (columns.rs) |
 | `0x140698380` | bullet effect spawn | the player's bullets' effects through the columns (columns.rs) |
+| `0x1408f0190` | muzzle flash spawn | the player's shots' muzzle flashes through the columns (columns.rs) |
 | `0x1410d8460` | AC parts loader | notes when the player's parts load (weapons.rs) |
 | `0x1415d0080` | part name builder | the player's weapon part copies (weapons.rs) |
 | `0x140995870`, `0x140995780` | hit effect dispatchers | note the player's melee hits (hits.rs) |

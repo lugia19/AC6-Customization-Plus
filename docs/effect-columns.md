@@ -44,6 +44,11 @@ blast, the MOONLIGHT / ML-REDSHIFT light waves. The DLL hooks that spawn too and
 owner's handle at bullet + 0xce0) and effects in the custom-column range (990000-999999: the expansions' and weapons'
 rows), looks the ID up in the replace table with the player's column.
 
+**Muzzle flashes.** A bullet's `muzzleFlashSfxId` / `_2` (MOONLIGHT's 991905 / 991915, ML-REDSHIFT's 992205 / 992215)
+are spawned on the shooter, by `0x1408f0190(fire_module, info)` (the shooter's ChrIns at fire_module + 8; the IDs at
+info + 8 / + 0x10), for melee-launched bullets and gun fire alike. The DLL hooks it too: for the player's shots, both
+IDs go through the replace table the same way, in a copy of `info` (gun fire reuses it for each dummy poly).
+
 ## Melee weapons' effects
 
 What a melee weapon's animations play: per blade weapon a glow
