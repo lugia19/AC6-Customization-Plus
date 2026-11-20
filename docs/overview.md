@@ -1,0 +1,72 @@
+# How it works
+
+Armored Core VI 1.09.1; every address is for that exe. The mod is a package of game files built from your install
+(`build.py`) and a DLL (`dll/`). The features are built from a few mechanisms, each in its own doc:
+
+| Mechanism | What it does | Doc |
+|---|---|---|
+| Paint UI | the extra rows and their panels, the preview highlight, DEVICE's brightness | [paint-ui.md](paint-ui.md) |
+| Storage | where the rows keep their values: free sections of the AC's paint data | [storage.md](storage.md) |
+| Effect columns | gives the player's AC its own column in the game's generator-dependent effect tables | [effect-columns.md](effect-columns.md) |
+| Tinted copies | effect copies colored by values the DLL serves | [tinted-copies.md](tinted-copies.md) |
+| Model copies | models and materials made for the copies and for the player's weapons; blade colors set live | [model-copies.md](model-copies.md) |
+| HUD movie | the HUD movie rewritten with the HUD row's colors each sortie | [hud.md](hud.md) |
+
+## Features
+
+| Feature | Uses |
+|---|---|
+| GENERATOR: thruster color, flame type | Paint UI, storage, effect columns (the flame type is the column), tinted copies |
+| GENERATOR: expansion color | the same; Assault Armor's blast through the bullet effect hook; neutral model copies |
+| GENERATOR: accent color (ALLMIND type) | tinted copies (the fade) |
+| HUD: color, warning color, opacity | Paint UI, storage, HUD movie |
+| DEVICE's brightness | Paint UI only: the game's own materials and menus |
+| WEAPON VFX: effects | Paint UI, storage, effect columns, tinted copies (light waves through the bullet hook) |
+| WEAPON VFX: energy blades | Paint UI, storage, model copies (the player's part copy, its material's colors set live) |
+
+Without the DLL, everything plays stock: nothing ever asks for the custom columns, the player's AC loads the stock
+weapon parts, the HUD movie is used as shipped (it looks stock), and the rows aren't there.
+
+## The DLL
+
+`dll/src`, by mechanism: `rows.rs`, `panel.rs`, `ui.rs` (Paint UI); `ext_values.rs` (served values), `columns.rs`
+(effect columns); `generator.rs`, `hud.rs` / `hud_movie.rs`, `weapons.rs` (features); `game.rs` (memory helpers,
+the player and paint data pointer chains). One thread (`lib.rs` update loop) applies changed settings every 200 ms.
+Log: `Game\debug-logs\customization_plus.log`.
+
+Hooks (14). The game's Arxan protection puts back code it guards at irregular times, removing hooks, so the me3
+profile turns it off (`disable_arxan`).
+
+| Hook | Function | For |
+|---|---|---|
+| `0x140f418d0` | Paint row builder | keeps the edit context while it runs (rows.rs) |
+| `0x140d3cb00` | list description hand-off | appends our rows (rows.rs) |
+| `0x140f43610` | row kind -> panel | our rows' and DEVICE's panels (rows.rs) |
+| `0x14045de80` | is-normal-slot | DEVICE built as a color row (rows.rs) |
+| `0x140f3fd90` | Paint panels setup | hides our panel and list host; keeps the panel state (panel.rs) |
+| `0x140f35c40` | material text | "Brightness N%" (panel.rs) |
+| `0x14102c4c0` | preview highlight | WEAPON VFX flashes the weapons (weapons.rs) |
+| `0x142b56480` | FXR external value read | serves the colors (ext_values.rs) |
+| `0x140829de0` | a character's generator color type | the player's column (columns.rs) |
+| `0x140698380` | bullet effect spawn | the player's bullets' effects through the columns (columns.rs) |
+| `0x1410d8460` | AC parts loader | notes when the player's parts load (weapons.rs) |
+| `0x1415d0080` | part name builder | the player's blade parts' copies (weapons.rs) |
+| `0x141609040` | menu movie lookup | the HUD movie each sortie (hud.rs) |
+| `0x1415f40b0` | Scaleform file opener | serves the rewritten HUD movie (hud.rs) |
+
+## The build
+
+`build.py` (pieces in `tools/`, `fxr/build_fxrs.mjs`) writes `package/`:
+
+| File | Made from | What changes |
+|---|---|---|
+| `regulation.bin` | the game's | custom columns 3-6 of the two effect tables; replace rows for the weapons' effects (`tools/params.py`) |
+| `sfx/sfxbnd_commoneffects.ffxbnd.dcx` | the game's (and ALLMIND's effects from `sfxbnd_m30`) | tinted copies and bundles; neutral model copies (`fxr/build_fxrs.mjs`, `tools/models.py`) |
+| `material/allmaterial.matbinbnd.dcx` | the game's | neutral materials for those models; the weapons' blade material copies (`tools/models.py`, `tools/weapons.py`) |
+| `parts/wp_l_9xxx*.partsbnd.dcx`, `wp_9xxx*.tpf.dcx` | the energy blade weapons' parts and textures | the player's copies (`tools/weapons.py`) |
+| `menu/02_coloring.gfx` | the Paint movie | the extra rows' clips, their panel, the tall list (`tools/build_gfx.py`) |
+| `menu/01_000_fe.gfx` | the HUD movie | neutral transforms, a table of its colors (`tools/prepare_hud.py`) |
+| `customization_plus.dll`, `customization-plus.me3` | `dll/`, the repo | |
+
+The DLL and the build share some tables (flame type labels, weapon list, external value IDs); the build checks they
+agree.

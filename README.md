@@ -71,19 +71,23 @@ Coming from 0.1.0 (AC6-Thruster-Customization)? The save file has a new name: re
 
 ## How it works
 
-- **Paint rows.** The rows are list items the DLL adds to the list the game builds, shown by clips added to the Paint
-  movie, with panels built from the game's own menu pieces; a row keeps its values in a part of the AC's paint data the
-  game never uses. DEVICE's brightness reuses the game's own material menu.
-  [docs/paint-rows.md](docs/paint-rows.md)
-- **Flames and expansions.** The game picks thruster and expansion effects by the generator's color type; the DLL
-  answers with custom columns for your AC only, which play copies of the effects tinted with colors the DLL serves.
-  [docs/effects.md](docs/effects.md)
-- **Melee weapons.** Weapon effects go through the same columns; energy blades are a material of the weapon's model,
-  so your AC loads a copy of the model with its own material, whose colors the DLL sets.
-  [docs/weapon-vfx.md](docs/weapon-vfx.md)
-- **HUD.** Each sortie, the DLL hands the game a copy of the HUD movie with every color rewritten for the HUD row.
-  [docs/hud.md](docs/hud.md)
-- Without the DLL, everything plays stock.
+A DLL and a package of game files built from your install. In short:
+
+- **Paint UI** ([paint-ui.md](docs/paint-ui.md)): the rows are list items the DLL adds to the list the game builds,
+  with panels made from the game's own menu pieces. DEVICE's brightness reuses the game's own material menu.
+- **Storage** ([storage.md](docs/storage.md)): the rows keep their values in parts of the AC's paint data the game
+  never uses.
+- **Effect columns** ([effect-columns.md](docs/effect-columns.md)): the game picks thruster, expansion and melee
+  weapon effects from tables by the generator's color type; the DLL answers with columns of their own for your AC only.
+- **Tinted copies** ([tinted-copies.md](docs/tinted-copies.md)): those columns play copies of the effects, colored by
+  values the DLL serves.
+- **Model copies** ([model-copies.md](docs/model-copies.md)): energy blades are a material of the weapon's model, so
+  your AC loads a copy of the weapon with its own material, whose colors the DLL sets.
+- **HUD** ([hud.md](docs/hud.md)): each sortie, the DLL hands the game a copy of the HUD movie with every color
+  rewritten.
+
+Without the DLL, everything plays stock. Which feature uses what, the hooks and the build:
+[docs/overview.md](docs/overview.md).
 
 ## Build
 

@@ -9,7 +9,7 @@
 //!   material repository (MtdRepository) and their colors set like the game's own matbin reload does: the value, then a
 //!   commit that rebuilds the material's constant buffer.
 //! Colors: the WEAPON VFX row (rows.rs), saved with the AC: every melee weapon has its own color in the row's section
-//! (WEAPONS' order: colors 0-5, then pattern colors 0-3; docs/paint-rows.md), and the panel shows the two equipped
+//! (WEAPONS' order: colors 0-5, then pattern colors 0-3; docs/storage.md), and the panel shows the two equipped
 //! ones: the left-arm melee weapon and the left-back one (melee weapons go nowhere else). A weapon without a color
 //! keeps its stock blade, and its effects get the weapon's default color. On the row the preview flashes the weapons'
 //! units, in the panel the hovered entry's (the highlight hook 0x14102c4c0).

@@ -1,5 +1,5 @@
-//! The game's menu plumbing, as the Paint screen code uses it (research: AC6_tools\Research\paint-popup, OVERVIEW.md
-//! and wide\ / wide2\ report_*.md): text labels, clip handles, std::functions, jobs and list descriptions.
+//! The game's menu plumbing, as the Paint screen code uses it (docs/paint-ui.md): text labels, clip handles,
+//! std::functions, jobs and list descriptions.
 
 use crate::game::{game_fn, utf16};
 

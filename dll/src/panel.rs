@@ -1,5 +1,4 @@
-//! The panels of our rows and DEVICE's, built here (research: AC6_tools\Research\paint-popup, OVERVIEW.md and
-//! wide2\report_*.md; docs/paint-rows.md).
+//! The panels of our rows and DEVICE's, built here (docs/paint-ui.md).
 //!
 //! A panel is a list window: a description filled with items (a header label, an on-confirm std::function returning
 //! the job that opens what comes next, a refresh std::function filling the item's clip every frame), made into the
@@ -75,7 +74,7 @@ unsafe extern "system" fn set_up_panels_impl(list: usize, content: usize, screen
     result
 }
 
-// The panel state (the MainContent screen + 0x2618; research: paint-popup\highlight.md), kept from the Paint screen's
+// The panel state (the MainContent screen + 0x2618; docs/paint-ui.md), kept from the Paint screen's
 // last setup: the current row's kind, the current panel (its window stack at [state] + 0x10).
 static PANEL_STATE: AtomicUsize = AtomicUsize::new(0);
 const STATE_KIND_OFFSET: usize = 0x13c;

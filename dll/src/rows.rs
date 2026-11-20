@@ -1,7 +1,7 @@
 //! The extra rows in the Paint screen's per-part list, after WEATHERING. A row is one value set for the whole AC, never
 //! per part: a color, and optionally a choice from a list and more colors, which its panel (panel.rs) offers. How
-//! the Paint screen builds its list and panels, and what each hook is for: docs/paint-rows.md. The rows' clips are in
-//! the Paint movie (tools/build_gfx.py; its row count matches ROW_COUNT).
+//! the Paint screen builds its list and panels, and what each hook is for: docs/paint-ui.md; storage: docs/storage.md.
+//! The rows' clips are in the Paint movie (tools/build_gfx.py; its row count matches ROW_COUNT).
 //!
 //! The rows are items of ours, appended to the list the game's row builder made, built as it builds its color rows:
 //! our label, our kind (a value no stock row has), our refresh (the swatch) and the color rows' on-confirm (into the

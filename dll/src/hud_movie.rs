@@ -236,9 +236,8 @@ impl Recolor {
 mod tests {
     use super::*;
 
-    /// Against files made by an independent implementation of the rule (hud-color/tools/movie-colors/
-    /// apply_table.py): set HUD_PREPARED to the prepared movie and HUD_REFERENCES to a folder of
-    /// ref_<HUD RRGGBB>_<warning RRGGBB>_<opacity>.gfx files. Skipped without them.
+    /// Against files made by an independent implementation of the rule: set HUD_PREPARED to the prepared movie and
+    /// HUD_REFERENCES to a folder of ref_<HUD RRGGBB>_<warning RRGGBB>_<opacity>.gfx files. Skipped without them.
     #[test]
     fn matches_references() {
         let (Ok(prepared), Ok(folder)) = (std::env::var("HUD_PREPARED"), std::env::var("HUD_REFERENCES")) else { return };

@@ -1,4 +1,4 @@
-# The HUD row
+# HUD movie
 
 How the HUD row recolors the in-mission HUD (`dll/src/hud.rs`, `dll/src/hud_movie.rs`, `tools/prepare_hud.py`;
 Armored Core VI 1.09.1).
