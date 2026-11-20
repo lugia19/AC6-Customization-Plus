@@ -106,9 +106,9 @@ def main():
     input_path = os.path.join(WORK, "fxr_input.json")
     neutral_models = make_neutral_models(os.path.join(unpacked(effects), "model"), unpacked(materials), witchy)
     built_parts, weapon_textures = weapons.make_weapon_copies(args.game, WORK, weapon_parts, unpacked(materials))
-    weapon_inputs = weapons.fxr_inputs(open(os.path.join(ROOT, "dll", "src", "weapons.rs")).read())
+    weapon_inputs, hit_inputs = weapons.fxr_inputs(os.path.join(ROOT, "dll", "src"))
     json.dump({"flames": list(flame_rows.values()), "others": expansion_effects, "weapons": weapon_inputs,
-               "neutralModels": neutral_models}, open(input_path, "w"))
+               "hits": hit_inputs, "neutralModels": neutral_models}, open(input_path, "w"))
     subprocess.run(["node", "build_fxrs.mjs", effect_dir, id_map_path, input_path,
                     os.path.join(unpacked(allmind), "effect")], cwd=fxr_dir,
                    check=True, shell=shell)

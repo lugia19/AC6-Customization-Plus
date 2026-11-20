@@ -30,8 +30,12 @@ struct Weapon {
     model: u16,
     /// What its effects get until a color is set.
     default: u32,
+    /// Its BehaviorParam variation (behaviorVariationId): its attacks' and bullets' IDs / 1000.
+    variation: i32,
     /// Its colored materials' copies (tools/weapons.py player_copy).
     materials: &'static [Material],
+    /// The hit effects it makes, which have copies (tools/weapons.py WEAPON_HIT_EFFECTS; hits.rs).
+    hits: &'static [i32],
 }
 
 /// A material's name and its color parameters (a material may lack some).
@@ -45,21 +49,44 @@ const fn blade(name: &'static [u16]) -> Material {
 }
 
 const WEAPONS: [Weapon; 10] = [
-    Weapon { id: 20010000, model: 211, default: 0x99FFFF, materials: &[blade(&utf16(b"P[WP_9210]_Laser\0"))] },
-    Weapon { id: 20020000, model: 221, default: 0x4DB3FF, materials: &[blade(&utf16(b"P[WP_9220]_Laser\0"))] },
     Weapon {
-        id: 20000100, model: 230, default: 0xFF4D4D,
-        materials: &[Material { name: &utf16(b"P[WP_9230]_LB_Emissive_Glow\0"), colors: &LASER_EMISSIVE_COLORS }],
+        id: 20010000, model: 211, default: 0x99FFFF, variation: 20100,
+        materials: &[blade(&utf16(b"P[WP_9210]_Laser\0"))], hits: &[260006],
     },
-    Weapon { id: 20040000, model: 241, default: 0x4DB3FF, materials: &[blade(&utf16(b"P[WP_9240]_Laser\0"))] },
-    Weapon { id: 20000200, model: 250, default: 0x80FFCC, materials: &[blade(&utf16(b"P[WP_9250]_Laser\0"))] },
-    Weapon { id: 20000300, model: 251, default: 0xFF4D4D, materials: &[blade(&utf16(b"P[WP_9251]_Laser\0"))] },
-    Weapon { id: 20030000, model: 411, default: 0x66CCFF, materials: &[blade(&utf16(b"P[WP_9410]_Laser\0"))] },
-    Weapon { id: 20050000, model: 610, default: 0x4DB3FF, materials: &[blade(&utf16(b"P[WP_9610]_Laser\0"))] },
-    Weapon { id: 20090000, model: 910, default: 0xFFCC4D, materials: &[] },
     Weapon {
-        id: 20070000, model: 1210, default: 0x7766FF,
+        id: 20020000, model: 221, default: 0x4DB3FF, variation: 20200,
+        materials: &[blade(&utf16(b"P[WP_9220]_Laser\0"))], hits: &[250006],
+    },
+    Weapon {
+        id: 20000100, model: 230, default: 0xFF4D4D, variation: 20010,
+        materials: &[Material { name: &utf16(b"P[WP_9230]_LB_Emissive_Glow\0"), colors: &LASER_EMISSIVE_COLORS }],
+        hits: &[265006],
+    },
+    Weapon {
+        id: 20040000, model: 241, default: 0x4DB3FF, variation: 20400,
+        materials: &[blade(&utf16(b"P[WP_9240]_Laser\0"))], hits: &[250006, 273006],
+    },
+    Weapon {
+        id: 20000200, model: 250, default: 0x80FFCC, variation: 20020,
+        materials: &[blade(&utf16(b"P[WP_9250]_Laser\0"))], hits: &[273006, 273007],
+    },
+    Weapon {
+        id: 20000300, model: 251, default: 0xFF4D4D, variation: 20030,
+        materials: &[blade(&utf16(b"P[WP_9251]_Laser\0"))], hits: &[265006, 265007],
+    },
+    Weapon {
+        id: 20030000, model: 411, default: 0x66CCFF, variation: 20300,
+        materials: &[blade(&utf16(b"P[WP_9410]_Laser\0"))], hits: &[250006, 273006],
+    },
+    Weapon {
+        id: 20050000, model: 610, default: 0x4DB3FF, variation: 20500,
+        materials: &[blade(&utf16(b"P[WP_9610]_Laser\0"))], hits: &[250006],
+    },
+    Weapon { id: 20090000, model: 910, default: 0xFFCC4D, variation: 20900, materials: &[], hits: &[257006] },
+    Weapon {
+        id: 20070000, model: 1210, default: 0x7766FF, variation: 20700,
         materials: &[Material { name: &utf16(b"P[WP_8210]_Plasmawire\0"), colors: &PLASMA_WIRE_COLORS }],
+        hits: &[255000, 255005, 255006],
     },
 ];
 // A weapon's nine external values start at EXT_BASE + EXT_BLOCK * model (build.py reads EXT_BASE).
@@ -242,6 +269,11 @@ fn paint(found: &Found, rgb: Option<u32>) {
         unsafe { *((param + PARAM_VALUE_OFFSET) as *mut [f32; 3]) = value };
     }
     unsafe { game_fn::<CommitFn>(COMMIT_ADDR)(found.material) };
+}
+
+/// The copy of a hit effect for the weapon of a BehaviorParam variation, if it has one: its model, to find the copy.
+pub(crate) fn hit_copy_model(variation: i32, sfx: i32) -> Option<u16> {
+    WEAPONS.iter().find(|w| w.variation == variation && w.hits.contains(&sfx)).map(|w| w.model)
 }
 
 fn equipped(slot: usize) -> Option<&'static Weapon> {

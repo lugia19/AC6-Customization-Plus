@@ -14,12 +14,13 @@
 // the row's current flame + ALLMIND_BUNDLE_OFFSET.
 // Other effects (the core expansions') get the same copies, tinted by the expansion color instead, in a bundle at
 // S + BUNDLE_OFFSET, for every flame type. Melee weapons' effects get the same pair at S + WEAPON_OFFSETS, tinted by
-// their weapon's color, in a bundle at S + WEAPON_BUNDLE_OFFSET.
+// their weapon's color, in a bundle at S + WEAPON_BUNDLE_OFFSET; their hit effects too, per weapon (IDs from the input).
 // Usage: node build_fxrs.mjs <unpacked sfxbnd_commoneffects effect dir> <id map json out> <input json>
 //        <unpacked sfxbnd_m30 effect dir> [bundles dir]
 // (input: {flames: a list of [combustion, current, Coral] stock FXR IDs, others: a list of stock FXR IDs,
-// weapons: a list of [first external value ID, stock FXR IDs], neutralModels: {model: the copies' version of it, whose
-// material has no color of its own}})
+// weapons: a list of [first external value ID, stock FXR IDs], hits: a list of [first external value ID, [add, remove]
+// offsets, bundle offset, stock FXR IDs], neutralModels: {model: the copies' version of it, whose material has no color
+// of its own}})
 // Writes the new FXRs into the effect dir, and a map {bundles: per flame row, its bundle per flame type (combustion,
 // current, Coral, ALLMIND), otherBundles: {stock id: the bundle or copy its custom columns play}, resources: {new id: source id}} (each new FXR needs its
 // source's resource list; bundles only hold proxies).
@@ -338,7 +339,7 @@ function makeContinuous(fxr) {
 }
 
 const [effectDir, idMapPath, inputPath, allmindDir, bundlesDir] = process.argv.slice(2)
-const { flames: rows, others, weapons, neutralModels } = JSON.parse(fs.readFileSync(inputPath, 'utf8'))
+const { flames: rows, others, weapons, hits, neutralModels } = JSON.parse(fs.readFileSync(inputPath, 'utf8'))
 const fileName = id => `f${String(id).padStart(9, '0')}.fxr`
 const file = id => path.join(effectDir, fileName(id))
 // The boss's effects are in their own archive.
@@ -366,6 +367,10 @@ const pending = [
   ...others.map(sfx => [sfx, EXPANSION, null]),
   ...weapons.flatMap(([ext, effects]) => {
     const kind = { ext, offsets: WEAPON_OFFSETS }
+    return effects.map(sfx => [sfx, kind, null])
+  }),
+  ...hits.flatMap(([ext, offsets, , effects]) => {
+    const kind = { ext, offsets }
     return effects.map(sfx => [sfx, kind, null])
   }),
 ]
@@ -429,6 +434,10 @@ for (const [ext, effects] of weapons) {
     otherBundles[sfx] = sfx + WEAPON_BUNDLE_OFFSET
     await save(bundle(sfx + WEAPON_BUNDLE_OFFSET, [[sfx, { ext, offsets: WEAPON_OFFSETS }]]))
   }
+}
+// The weapons' hit effects: a bundle per weapon and effect, which the DLL spawns instead (no table points at it).
+for (const [ext, offsets, bundleOffset, effects] of hits) {
+  for (const sfx of effects) await save(bundle(sfx + bundleOffset, [[sfx, { ext, offsets }]]))
 }
 if (bundlesDir) {
   console.log(`${saved.size - Object.keys(resources).length} bundles and the boss's effects in ${bundlesDir}`)

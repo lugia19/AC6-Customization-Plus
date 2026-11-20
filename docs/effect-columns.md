@@ -63,5 +63,26 @@ hue per weapon. Each listed effect gets a tinted copy:
 | VP-67EB stun baton | 910 | 991800, 991805-811, 991815-817 | effects only |
 | HMMR | 1210 | 991700-703, 991710-715 | effects only |
 
-Left out: the chainsaw and pile bunker (physical sparks), grey smoke effects (991606, 992012). Known gap: some of
-MOONLIGHT's effects still play stock (to find with fxr-hunter).
+Left out: the chainsaw and pile bunker (physical sparks), grey smoke effects (991606, 992012).
+
+## Melee hit effects
+
+A hit's effects (sparks on a target or the ground) come from `HitEffectSfxParam`, not from these tables: a row per
+surface concept, a column per attack type and size, so every laser weapon's slash makes the same 250006, enemies'
+included. All of them are picked by one function, `0x140b9f390(out, material, type, size, row offset, concept1,
+concept2, mod100)` (an FD4 vector of `{i32 id; u8 follow}`), called only under the hit dispatchers `0x140995870(dmg)` /
+`0x140995780(list, dmg)` (on the damage manager's thread or its job workers) for weapon hits.
+
+`dll/src/hits.rs` hooks the three: a dispatcher keeps the hit's weapon in a thread-local when the player made it, and
+the list builder then swaps each effect that weapon has a copy of for the copy's bundle (stock + model × 100,000 +
+60,000; the pair at + 0 / + 30,000).
+
+- **The player:** `0x140b3c790(attacker)` (dmg + 0x1e8) gives the character behind a character or bullet, through
+  the bullets that fired it; compared with the player's.
+- **The weapon:** dmg + 0x64, the BehaviorParam ID that launched the attack, is 100,000,000 + variation × 1000 + n for
+  the player's; the stun baton's bullets have none, so their bullet ID (dmg + 0x150) / 1000. The variation is
+  EquipParamWeapon behaviorVariationId (melee weapons 20000-20999). Ranged weapons and anyone else's hits stay stock.
+- **The effects** (`tools/weapons.py` WEAPON_HIT_EFFECTS): 250006 laser weapons, 260006 pulse blade, 265006/265007
+  WLT 101 and ML-REDSHIFT, 273006/273007 MOONLIGHT (and the slicer's and dagger's Energy_Green attacks), 255000/255005/
+  255006 HMMR, 257006 stun baton. Left stock: criticals (they come from the target, by another path), terrain debris,
+  shield and Pulse Armor ripples (the target's color), and the HMMR's scorch decal (decals are their own system).

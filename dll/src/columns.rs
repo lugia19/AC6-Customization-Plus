@@ -10,12 +10,10 @@
 
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 
-use crate::game::{self, CHR_HANDLE_OFFSET, CHR_MODULES_OFFSET};
+use crate::game::{self, CHR_MODULES_OFFSET};
 use crate::{Hook, orig};
 
 pub(crate) const FIRST_CUSTOM_TYPE: i32 = 3;
-// The bullet's owner, as a character handle.
-const BULLET_OWNER_OFFSET: usize = 0xce0;
 // The replace table rows with custom columns (build.py EXPANSION_ROWS and WEAPON_EFFECTS): the core expansions' and
 // the melee weapons' effects (assault armor's blast and light waves are bullets).
 const CUSTOM_COLUMN_EFFECTS: std::ops::Range<i32> = 990_000..1_000_000;
@@ -68,7 +66,7 @@ unsafe extern "system" fn bullet_effect_impl(bullet: usize, out: usize, sfx: i32
 
 fn players_bullet_effect(bullet: usize, sfx: i32) -> Option<i32> {
     let player = game::player()?;
-    if game::read::<u64>(bullet + BULLET_OWNER_OFFSET)? != game::read::<u64>(player + CHR_HANDLE_OFFSET)? {
+    if !game::is_players(bullet) {
         return None;
     }
     let module = game::read::<usize>(game::read::<usize>(player + CHR_MODULES_OFFSET)?)?;

@@ -22,19 +22,20 @@ Armored Core VI 1.09.1; every address is for that exe. The mod is a package of g
 | HUD: color, warning color, opacity | Paint UI, storage, HUD movie |
 | DEVICE's brightness | Paint UI only: the game's own materials and menus |
 | WEAPON VFX: effects | Paint UI, storage, effect columns, tinted copies (light waves through the bullet hook) |
-| WEAPON VFX: energy blades | Paint UI, storage, model copies (the player's part copy, its material's colors set live) |
+| WEAPON VFX: hit effects | the hit hooks (effect-columns.md, "Melee hit effects"), tinted copies |
+| WEAPON VFX: blades, glows | Paint UI, storage, model copies (the player's part copy, its materials' colors set live) |
 
 Without the DLL, everything plays stock: nothing ever asks for the custom columns, the player's AC loads the stock
-weapon parts, the HUD movie is used as shipped (it looks stock), and the rows aren't there.
+weapon parts, nobody's hits get the copies, the HUD movie is used as shipped (it looks stock), and the rows aren't there.
 
 ## The DLL
 
 `dll/src`, by mechanism: `rows.rs`, `panel.rs`, `ui.rs` (Paint UI); `ext_values.rs` (served values), `columns.rs`
-(effect columns); `generator.rs`, `hud.rs` / `hud_movie.rs`, `weapons.rs` (features); `game.rs` (memory helpers,
+(effect columns); `generator.rs`, `hud.rs` / `hud_movie.rs`, `weapons.rs`, `hits.rs` (features); `game.rs` (memory helpers,
 the player and paint data pointer chains). One thread (`lib.rs` update loop) applies changed settings every 200 ms.
 Log: `Game\debug-logs\customization_plus.log`.
 
-Hooks (14). The game's Arxan protection puts back code it guards at irregular times, removing hooks, so the me3
+Hooks (17). The game's Arxan protection puts back code it guards at irregular times, removing hooks, so the me3
 profile turns it off (`disable_arxan`).
 
 | Hook | Function | For |
@@ -50,7 +51,9 @@ profile turns it off (`disable_arxan`).
 | `0x140829de0` | a character's generator color type | the player's column (columns.rs) |
 | `0x140698380` | bullet effect spawn | the player's bullets' effects through the columns (columns.rs) |
 | `0x1410d8460` | AC parts loader | notes when the player's parts load (weapons.rs) |
-| `0x1415d0080` | part name builder | the player's blade parts' copies (weapons.rs) |
+| `0x1415d0080` | part name builder | the player's weapon part copies (weapons.rs) |
+| `0x140995870`, `0x140995780` | hit effect dispatchers | note the player's melee hits (hits.rs) |
+| `0x140b9f390` | hit effect list | swaps in the weapon's hit copies (hits.rs) |
 | `0x141609040` | menu movie lookup | the HUD movie each sortie (hud.rs) |
 | `0x1415f40b0` | Scaleform file opener | serves the rewritten HUD movie (hud.rs) |
 

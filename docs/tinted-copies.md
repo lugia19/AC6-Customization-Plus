@@ -36,6 +36,7 @@ models swapped in ([model-copies.md](model-copies.md)).
 | + 9,500,000 / + 9,600,000 | ALLMIND: thruster color copies (add / remove) |
 | + 9,700,000 / + 9,800,000 | melee weapon copies (add / remove) |
 | + 9,900,000 | melee weapon bundle |
+| + model × 100,000 + 0 / + 30,000 / + 60,000 | a melee weapon's hit effect: add, remove, bundle |
 
 The build stops on any collision with an existing effect or another copy.
 

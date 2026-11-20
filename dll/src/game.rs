@@ -39,15 +39,22 @@ pub(crate) fn leak_utf16(text: &str) -> &'static [u16] {
 
 const WORLD_CHR_MAN_ADDR: usize = 0x144e0f598;
 const PLAYER_INS_OFFSET: usize = 0xA5A0;
-// ChrIns: its handle; [[+ 0x320]] is its module that the generator color type takes; its AC parts object.
-pub(crate) const CHR_HANDLE_OFFSET: usize = 8;
+// ChrIns: [[+ 0x320]] is its module that the generator color type takes; its AC parts object.
 pub(crate) const CHR_MODULES_OFFSET: usize = 0x320;
 pub(crate) const CHR_PARTS_OFFSET: usize = 0x47e8;
+// `ChrIns* character_of(FieldIns*)`: a character itself, a bullet's owner (through the bullets that fired it).
+const CHARACTER_OF_ADDR: usize = 0x140b3c790;
 
 /// The player's ChrIns (none while loading).
 pub(crate) fn player() -> Option<usize> {
     let world_chr_man = read::<usize>(WORLD_CHR_MAN_ADDR).filter(|&p| p != 0)?;
     read::<usize>(world_chr_man + PLAYER_INS_OFFSET).filter(|&p| p != 0)
+}
+
+/// Whether a character or bullet (a FieldIns) is the player's: the player, or fired by the player.
+pub(crate) fn is_players(field_ins: usize) -> bool {
+    let character_of: unsafe extern "system" fn(usize) -> usize = unsafe { game_fn(CHARACTER_OF_ADDR) };
+    field_ins != 0 && player().is_some_and(|player| unsafe { character_of(field_ins) } == player)
 }
 
 // ChrIns: its AC's assembly (what the AC parts loader builds it from); the assembly's weapons (EquipParamWeapon IDs,

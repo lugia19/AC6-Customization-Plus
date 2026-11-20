@@ -14,6 +14,8 @@
 //! - 0x141609040 menu movie lookup and 0x1415f40b0 the Scaleform file opener: the HUD's look, in hud.rs.
 //! - 0x1410d8460 AC parts loader and 0x1415d0080 part name builder: the player's blade parts' copies; 0x14102c4c0 the
 //!   Paint preview's highlight: WEAPON VFX flashes the weapons; in weapons.rs.
+//! - 0x140995870 / 0x140995780 hit effect dispatchers and 0x140b9f390 the hit effect list: the player's melee hits'
+//!   tinted copies, in hits.rs.
 //! The game's Arxan protection restores code it guards to its original bytes at irregular times, silently removing
 //! hooks: the mod's me3 profile turns it off (disable_arxan).
 //!
@@ -24,6 +26,7 @@ mod columns;
 mod ext_values;
 mod game;
 mod generator;
+mod hits;
 mod hud;
 mod hud_movie;
 mod panel;
@@ -64,6 +67,7 @@ fn install() -> Result<(), String> {
     hooks.extend(hud::hooks());
     hooks.extend(panel::hooks());
     hooks.extend(weapons::hooks());
+    hooks.extend(hits::hooks());
     for &(addr, bytes, _, _) in &hooks {
         let actual = unsafe { std::slice::from_raw_parts(addr as *const u8, bytes.len()) };
         // A jmp means another DLL hooked it first; the detours chain fine.

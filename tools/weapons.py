@@ -20,6 +20,18 @@ WEAPON_EFFECTS = {
     910: [991800, 991805, 991806, 991807, 991808, 991809, 991810, 991811, 991815, 991816, 991817],  # stun baton
     1210: [991700, 991701, 991702, 991703, 991710, 991711, 991712, 991713, 991714, 991715],  # plasma thrower
 }
+# The hit effects each weapon makes on characters and terrain (HitEffectSfxParam, by its attacks' material, type and
+# size; docs/effect-columns.md): a tinted copy per weapon (bundle at stock + model * HIT_MODEL_STRIDE +
+# HIT_BUNDLE_OFFSET, the pair below it; dll/src/hits.rs swaps them in for the player's hits). Shared between weapons, and
+# with NPCs and ranged weapons, so the DLL decides by the attack's weapon, never the ID.
+WEAPON_HIT_EFFECTS = {
+    211: [260006], 221: [250006], 230: [265006], 241: [250006, 273006], 250: [273006, 273007],
+    251: [265006, 265007], 411: [250006, 273006], 610: [250006], 910: [257006], 1210: [255000, 255005, 255006],
+}
+HIT_MODEL_STRIDE = 100000
+HIT_OFFSETS = (0, 30000)
+HIT_BUNDLE_OFFSET = 60000
+
 # Weapons with colored materials on their part (blades, emissives; fixed colors): the player's AC loads a copy of the
 # part (player_copy; the DLL renames it as it loads; dll/src/weapons.rs WEAPONS lists the copies' materials), with
 # copies of its textures and of these materials, whose colors the DLL sets.
@@ -77,13 +89,23 @@ def make_weapon_copies(game, work, parts, material_dir):
     return built, textures
 
 
-def fxr_inputs(weapons_rs):
-    """build_fxrs.mjs's weapon input: [first external value, effects] per weapon. The DLL serves a weapon's color on nine
-    external values from EXT_BASE + 10 * its model, and lists the weapons and their blade materials' copies itself:
-    checked against these tables."""
+def fxr_inputs(dll_src):
+    """build_fxrs.mjs's weapon inputs: [first external value, effects] per weapon, and [first external value, copy
+    offsets, bundle offset, hit effects] per weapon. The DLL serves a weapon's color on nine external values from
+    EXT_BASE + 10 * its model, and lists the weapons, their materials' copies and hit effects itself (weapons.rs, the hit
+    copies' IDs in hits.rs): checked against these tables."""
+    weapons_rs = open(os.path.join(dll_src, "weapons.rs")).read()
     ext_base = int(re.search(r"const EXT_BASE: i32 = (\d+);", weapons_rs).group(1))
     for model in WEAPON_EFFECTS:
         materials = WEAPON_MATERIALS.get(model, [])
-        listed = f"model: {model}," in weapons_rs and all(f'b"{player_copy(m)}\\0"' in weapons_rs for m in materials)
-        assert listed, f"weapons.rs doesn't list weapon {model} (or its materials) as build.py does"
-    return [[ext_base + 10 * model, effects_of_weapon] for model, effects_of_weapon in WEAPON_EFFECTS.items()]
+        hits = ", ".join(map(str, WEAPON_HIT_EFFECTS.get(model, [])))
+        entry = weapons_rs.split(f"model: {model},")[1].split("Weapon {")[0] if f"model: {model}," in weapons_rs else ""
+        listed = f"hits: &[{hits}]" in entry and all(f'b"{player_copy(m)}\\0"' in entry for m in materials)
+        assert listed, f"weapons.rs doesn't list weapon {model} (its hits, its materials) as build.py does"
+    hits_rs = open(os.path.join(dll_src, "hits.rs")).read()
+    for name, value in [("MODEL_STRIDE", HIT_MODEL_STRIDE), ("BUNDLE_OFFSET", HIT_BUNDLE_OFFSET)]:
+        assert f"const {name}: i32 = {value};" in hits_rs, f"hits.rs {name} isn't {value}"
+    weapons = [[ext_base + 10 * model, effects_of_weapon] for model, effects_of_weapon in WEAPON_EFFECTS.items()]
+    hits = [[ext_base + 10 * model, [model * HIT_MODEL_STRIDE + o for o in HIT_OFFSETS],
+             model * HIT_MODEL_STRIDE + HIT_BUNDLE_OFFSET, effects] for model, effects in WEAPON_HIT_EFFECTS.items()]
+    return weapons, hits
