@@ -1,4 +1,4 @@
-//! WEAPON VFX: the player's melee weapons in colors of their own, one per weapon model, a global setting.
+//! WEAPON VFX: the player's melee weapons in colors of their own, saved with the AC.
 //! - Effects: each weapon effect has a replace row whose custom columns (the player's only: columns.rs's color type
 //!   hook) play a copy tinted by external values (build.py WEAPON_EFFECTS): a weapon's color on a block from EXT_BASE +
 //!   10 * its model (ext_values.rs).
@@ -8,21 +8,25 @@
 //!   0x1415d0080 then renames. The copied materials are found by name in the game's
 //!   material repository (MtdRepository) and their colors set like the game's own matbin reload does: the value, then a
 //!   commit that rebuilds the material's constant buffer.
-//! Colors: customization_plus_weapons.txt next to the DLL, "<model> = RRGGBB" per line, reread when it changes. A
-//! weapon without one keeps its stock blade and its effects get the weapon's default color.
+//! Colors: the WEAPON VFX row (rows.rs), saved with the AC: every melee weapon has its own color in the row's section
+//! (WEAPONS' order: colors 0-5, then pattern colors 0-3; docs/paint-rows.md), and the panel shows the two equipped
+//! ones: the left-arm melee weapon and the left-back one (melee weapons go nowhere else). A weapon without a color
+//! keeps its stock blade, and its effects get the weapon's default color. On the row the preview flashes the weapons'
+//! units, in the panel the hovered entry's (the highlight hook 0x14102c4c0).
 
 use std::cell::Cell;
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 use std::sync::atomic::AtomicUsize;
 
 use crate::ext_values::{self, Block, Channels};
-use crate::game::{self, CHR_PARTS_OFFSET, game_fn, utf16};
+use crate::game::{self, CHR_PARTS_OFFSET, SLOT_LEFT_ARM, SLOT_LEFT_BACK, game_fn, utf16};
+use crate::rows::{self, ROW_WEAPONS};
 use crate::{Hook, log, orig};
 
 struct Weapon {
+    /// Its EquipParamWeapon row (what the assembly holds).
+    id: i32,
     model: u16,
-    name: &'static str,
     /// What its effects get until a color is set.
     default: u32,
     /// Its blade material's copy (build.py player_copy), if the blade is a material of the part.
@@ -30,16 +34,16 @@ struct Weapon {
 }
 
 const WEAPONS: [Weapon; 10] = [
-    Weapon { model: 211, name: "pulse blade", default: 0x99FFFF, blade: Some(&utf16(b"P[WP_9210]_Laser\0")) },
-    Weapon { model: 221, name: "laser blade", default: 0x4DB3FF, blade: Some(&utf16(b"P[WP_9220]_Laser\0")) },
-    Weapon { model: 230, name: "WLT 101", default: 0xFF4D4D, blade: None },
-    Weapon { model: 241, name: "laser dagger", default: 0x4DB3FF, blade: Some(&utf16(b"P[WP_9240]_Laser\0")) },
-    Weapon { model: 250, name: "MOONLIGHT", default: 0x80FFCC, blade: Some(&utf16(b"P[WP_9250]_Laser\0")) },
-    Weapon { model: 251, name: "ML-REDSHIFT", default: 0xFF4D4D, blade: Some(&utf16(b"P[WP_9251]_Laser\0")) },
-    Weapon { model: 411, name: "laser slicer", default: 0x66CCFF, blade: Some(&utf16(b"P[WP_9410]_Laser\0")) },
-    Weapon { model: 610, name: "laser lance", default: 0x4DB3FF, blade: Some(&utf16(b"P[WP_9610]_Laser\0")) },
-    Weapon { model: 910, name: "stun baton", default: 0xFFCC4D, blade: None },
-    Weapon { model: 1210, name: "plasma thrower", default: 0x7766FF, blade: None },
+    Weapon { id: 20010000, model: 211, default: 0x99FFFF, blade: Some(&utf16(b"P[WP_9210]_Laser\0")) },
+    Weapon { id: 20020000, model: 221, default: 0x4DB3FF, blade: Some(&utf16(b"P[WP_9220]_Laser\0")) },
+    Weapon { id: 20000100, model: 230, default: 0xFF4D4D, blade: None },
+    Weapon { id: 20040000, model: 241, default: 0x4DB3FF, blade: Some(&utf16(b"P[WP_9240]_Laser\0")) },
+    Weapon { id: 20000200, model: 250, default: 0x80FFCC, blade: Some(&utf16(b"P[WP_9250]_Laser\0")) },
+    Weapon { id: 20000300, model: 251, default: 0xFF4D4D, blade: Some(&utf16(b"P[WP_9251]_Laser\0")) },
+    Weapon { id: 20030000, model: 411, default: 0x66CCFF, blade: Some(&utf16(b"P[WP_9410]_Laser\0")) },
+    Weapon { id: 20050000, model: 610, default: 0x4DB3FF, blade: Some(&utf16(b"P[WP_9610]_Laser\0")) },
+    Weapon { id: 20090000, model: 910, default: 0xFFCC4D, blade: None },
+    Weapon { id: 20070000, model: 1210, default: 0x7766FF, blade: None },
 ];
 // A weapon's nine external values start at EXT_BASE + EXT_BLOCK * model (build.py reads EXT_BASE).
 const EXT_BASE: i32 = 900000;
@@ -52,7 +56,18 @@ const BLADE_COLORS: [&[u16]; 3] = [
 // A color parameter's rgba (then its intensity).
 const PARAM_VALUE_OFFSET: usize = 0x40;
 
-const SETTINGS_FILE: &str = "customization_plus_weapons.txt";
+// The panel's entries: the left-arm weapon's color, the left-back one's.
+const SLOTS: [usize; 2] = [SLOT_LEFT_ARM, SLOT_LEFT_BACK];
+// Where weapon i's color is in the row's section: the six colors, then the four pattern colors (no part uses them).
+const SECTION_COLORS_OFFSET: usize = 0x8;
+const SECTION_PATTERN_COLORS_OFFSET: usize = 0x30;
+const _: () = assert!(WEAPONS.len() <= 10, "the row's section has room for ten weapons' colors");
+// The panel's labels: the weapons' names from the game's text (MsgRepository: `const wchar_t* text(repository,
+// category, id, fallback)`; category 11, the item text's weapon names, by EquipParamWeapon ID).
+const MSG_REPOSITORY_ADDR: usize = 0x144e256d8;
+const TEXT_ADDR: usize = 0x14157d750;
+const WEAPON_NAMES: i16 = 11;
+static NO_WEAPON: [u16; 20] = utf16(b"No supported weapon\0");
 
 const MTD_REPOSITORY_ADDR: usize = 0x144e1cc38;
 // `MtdResCap* find(repository, const wchar_t* name)`; the material at rescap + 0x78.
@@ -80,13 +95,56 @@ thread_local! {
     static LOADING_PLAYERS: Cell<bool> = const { Cell::new(false) };
 }
 
-pub(crate) fn hooks() -> [Hook; 2] {
+pub(crate) fn hooks() -> [Hook; 3] {
     [
         // push rbp / push rsi / push rdi / push r12
         (0x1410d8460, [0x40, 0x55, 0x56, 0x57, 0x41, 0x54], loader_impl as *const (), &ORIG_LOADER),
         // mov [rsp+8],rbx / mov [rsp+10],rbp
         (0x1415d0080, [0x48, 0x89, 0x5c, 0x24, 0x08, 0x48], part_name_impl as *const (), &ORIG_PART_NAME),
+        // mov [rsp+8],rbx / push rdi
+        (0x14102c4c0, [0x48, 0x89, 0x5c, 0x24, 0x08, 0x57], highlight_entry as *const (), &ORIG_HIGHLIGHT),
     ]
+}
+
+// The Paint screen's highlight (the parts flashing orange): 0x14102c4c0(model view, &sections, &color slots, filter),
+// spans {begin, end} of u8, kept by pointer (a new span restarts the flash). Every frame: the category's sections and
+// the current row's slots, none for our rows. On WEAPON VFX the weapons' units flash instead (sections: left arm unit
+// 8, left back unit 13; SLOTS' order), all slots: both on the row, the entry's in its panel.
+type HighlightFn = unsafe extern "system" fn(usize, *const [*const u8; 2], *const [*const u8; 2], i32);
+static ORIG_HIGHLIGHT: AtomicUsize = AtomicUsize::new(0);
+// The call that matters: the Paint screen's update (0x140f4e610), past its category list (that call returns to
+// 0x140f4e814). The entry stub keeps the return address (the main thread's; the only caller).
+const PAINT_HIGHLIGHT_RETURN: usize = 0x140f4e86e;
+static HIGHLIGHT_CALLER: AtomicUsize = AtomicUsize::new(0);
+
+#[unsafe(naked)]
+unsafe extern "system" fn highlight_entry() {
+    std::arch::naked_asm!(
+        "mov rax, [rsp]",
+        "mov [rip + {caller}], rax",
+        "jmp {body}",
+        caller = sym HIGHLIGHT_CALLER,
+        body = sym highlight_impl,
+    );
+}
+static UNIT_SECTIONS: [u8; 2] = [8, 13];
+static ALL_SLOTS: [u8; 6] = [0, 1, 2, 3, 4, 5];
+
+unsafe extern "system" fn highlight_impl(view: usize, sections: *const [*const u8; 2], slots: *const [*const u8; 2],
+                                         filter: i32) {
+    let highlight = unsafe { orig::<HighlightFn>(&ORIG_HIGHLIGHT) };
+    let caller = HIGHLIGHT_CALLER.load(std::sync::atomic::Ordering::Relaxed);
+    let cursor = if caller == PAINT_HIGHLIGHT_RETURN { crate::panel::cursor() } else { None };
+    let units = match cursor {
+        Some((kind, entry)) if rows::row_of_kind(kind) == Some(ROW_WEAPONS) => match entry {
+            Some(which) => UNIT_SECTIONS.get(which..which + 1),
+            None => Some(&UNIT_SECTIONS[..]),
+        },
+        _ => None,
+    };
+    let Some(units) = units else { return unsafe { highlight(view, sections, slots, filter) } };
+    let span = |s: &'static [u8]| [s.as_ptr(), s.as_ptr_range().end];
+    unsafe { highlight(view, &span(units), &span(&ALL_SLOTS), filter) }
 }
 
 unsafe extern "system" fn loader_impl(parts: usize, a2: usize, a3: usize, a4: usize, a5: usize, a6: usize, a7: usize,
@@ -157,24 +215,59 @@ fn paint_blade(blade: &Blade, rgb: Option<u32>) {
     unsafe { game_fn::<CommitFn>(COMMIT_ADDR)(blade.material) };
 }
 
-/// The settings file's colors per model ("221 = 4DB3FF"; '#' starts a comment; a later line wins).
-fn read_colors(text: &str) -> BTreeMap<u16, u32> {
-    text.lines()
-        .filter_map(|line| {
-            let (model, color) = line.split('#').next()?.split_once('=')?;
-            Some((model.trim().parse().ok()?, u32::from_str_radix(color.trim(), 16).ok()?))
+fn equipped(slot: usize) -> Option<&'static Weapon> {
+    equipped_index(slot).map(|weapon| &WEAPONS[weapon])
+}
+
+/// The game's name for a weapon (its text stays loaded), with the terminator.
+fn weapon_name(id: i32) -> Option<&'static [u16]> {
+    let repository = game::read::<usize>(MSG_REPOSITORY_ADDR).filter(|&r| r != 0)?;
+    let text: unsafe extern "system" fn(usize, i16, i32, usize) -> usize = unsafe { game_fn(TEXT_ADDR) };
+    let at = Some(unsafe { text(repository, WEAPON_NAMES, id, 0) }).filter(|&t| t != 0)?;
+    let length = (0..64).find(|&i| game::read::<u16>(at + i * 2) == Some(0))?;
+    Some(unsafe { std::slice::from_raw_parts(at as *const u16, length + 1) })
+}
+
+/// A color's label in the panel: the name of the melee weapon in its slot.
+fn label(which: usize) -> &'static [u16] {
+    equipped(SLOTS[which]).and_then(|weapon| weapon_name(weapon.id)).unwrap_or(&NO_WEAPON)
+}
+
+fn storage_offset(weapon: usize) -> usize {
+    match weapon {
+        0..6 => SECTION_COLORS_OFFSET + weapon * 4,
+        _ => SECTION_PATTERN_COLORS_OFFSET + (weapon - 6) * 4,
+    }
+}
+
+/// The equipped melee weapon of a slot, as its index in WEAPONS.
+fn equipped_index(slot: usize) -> Option<usize> {
+    let id = game::player_weapon(slot)?;
+    WEAPONS.iter().position(|w| w.id == id)
+}
+
+/// The panel's entry `which`: the color of the weapon equipped in its slot.
+fn slot(which: usize) -> Option<rows::Slot> {
+    let weapon = equipped_index(SLOTS[which])?;
+    Some(rows::Slot { offset: storage_offset(weapon), default: WEAPONS[weapon].default })
+}
+
+pub(crate) fn claim_row() {
+    rows::claim_dynamic(ROW_WEAPONS, "WEAPON VFX", SLOTS.len(), label, slot);
+}
+
+/// The colors picked for the player's equipped melee weapons, by model.
+fn current_colors() -> BTreeMap<u16, u32> {
+    SLOTS.iter()
+        .filter_map(|&slot| {
+            let weapon = equipped_index(slot)?;
+            Some((WEAPONS[weapon].model, rows::picked_at(ROW_WEAPONS, storage_offset(weapon))?))
         })
         .collect()
 }
 
-/// The chosen colors (the settings file, until the WEAPON VFX row).
-fn current_colors(path: &std::path::Path) -> BTreeMap<u16, u32> {
-    read_colors(&std::fs::read_to_string(path).unwrap_or_default())
-}
-
 /// What was last applied, for the update loop (lib.rs).
 pub(crate) struct Weapons {
-    path: PathBuf,
     // The blades' materials, once found (they load at boot), in WEAPONS' order.
     blades: [Option<Blade>; WEAPONS.len()],
     colors: Option<BTreeMap<u16, u32>>,
@@ -182,17 +275,12 @@ pub(crate) struct Weapons {
 
 impl Weapons {
     pub(crate) fn new() -> Self {
-        let path = crate::module_dir().join(SETTINGS_FILE);
-        if !path.exists() {
-            let lines: String = WEAPONS.iter().map(|w| format!("# {} = {:06X}  ({})\n", w.model, w.default, w.name)).collect();
-            let _ = std::fs::write(&path, format!("# WEAPON VFX colors: <model> = RRGGBB\n{lines}"));
-        }
-        Weapons { path, blades: [const { None }; WEAPONS.len()], colors: None }
+        Weapons { blades: [const { None }; WEAPONS.len()], colors: None }
     }
 
     /// Applies the colors when they change, and to each blade material when it's found.
     pub(crate) fn update(&mut self) {
-        let now = current_colors(&self.path);
+        let now = current_colors();
         let changed = self.colors.as_ref() != Some(&now);
         if changed {
             let listed: Vec<String> = now.iter().map(|(model, color)| format!("{model} #{color:06X}")).collect();

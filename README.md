@@ -7,7 +7,7 @@ More to customize in Armored Core VI's Paint screen (1.09.1), saved with each AC
 - **Expansion color** for Assault Armor, Pulse Armor, Pulse Protection and Terminal Armor.
 - **HUD color, warning color and opacity** for the in-mission HUD.
 - **Light brightness**, a setting the game has but hides.
-- **Melee weapon colors** (in progress, no menu yet): each melee weapon in a color of its own, blade and effects.
+- **Melee weapon colors**: your melee weapons' blades and effects in colors of your own.
 
 ## Use
 
@@ -48,13 +48,12 @@ picked before isn't carried over.
 
 Everything is stored in the AC's paint data, so it's saved with the AC and carried by designs.
 
-**Melee weapon colors** don't have their row yet: for now they're set in `customization_plus_weapons.txt` next to
-`customization_plus.dll` (written on first launch, listing every weapon). One line per weapon model, e.g.
-`221 = FF00FF` makes the Vvc-770LB laser blade magenta; the game picks up a saved change on the next swing. Covered:
-the energy blades (pulse blade, laser blade, WLT 101, laser dagger, MOONLIGHT, ML-REDSHIFT, laser slicer, laser
-lance: blade and effects, light waves included) and the stun baton and plasma thrower (effects). Only your AC changes;
-enemies with the same weapon keep the stock look. A weapon without a color keeps its stock blade, and its effects get a
-color close to its stock one. These colors are one per weapon for every AC, not saved with the AC.
+**WEAPON VFX** is for your melee weapons: its panel shows the melee weapon on your left arm and the one in your left
+weapon bay, each with its color; like the game's own rows, the preview flashes the weapon you're on. Every melee weapon
+keeps its own color on the AC, so swapping weapons shows each one's color. Covered: the energy blades (HI-32: BU-TT/A, Vvc-770LB, WLT 101, VP-67LD, MOONLIGHT, ML-REDSHIFT, Vvc-774LS,
+VE-67LLA: blade and effects, light waves included) and the VP-67EB stun baton and HMMR plasma thrower (effects). Only
+your AC changes; enemies with the same weapon keep the stock look. Without a color, a weapon keeps its stock blade, and
+its effects get a color close to their stock one.
 
 Coming from 0.1.0 (AC6-Thruster-Customization)? The save file has a new name: rename `PaintMenu.sl2` to
 `CustomizationPlus.sl2` in your save folder to keep what you did there.

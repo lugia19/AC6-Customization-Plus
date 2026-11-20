@@ -50,6 +50,19 @@ pub(crate) fn player() -> Option<usize> {
     read::<usize>(world_chr_man + PLAYER_INS_OFFSET).filter(|&p| p != 0)
 }
 
+// ChrIns: its AC's assembly (what the AC parts loader builds it from); the assembly's weapons (EquipParamWeapon IDs,
+// -1 for none) by slot: 0 left arm, 1 right arm, 2 left back, 3 right back (0x1406f5890 reads them).
+const CHR_ASSEMBLY_OFFSET: usize = 0x47e0;
+const ASSEMBLY_WEAPONS_OFFSET: usize = 0xf4;
+pub(crate) const SLOT_LEFT_ARM: usize = 0;
+pub(crate) const SLOT_LEFT_BACK: usize = 2;
+
+/// The weapon the player's AC has in `slot` (the garage's AC too: the Paint screen paints it).
+pub(crate) fn player_weapon(slot: usize) -> Option<i32> {
+    let assembly = read::<usize>(player()? + CHR_ASSEMBLY_OFFSET).filter(|&a| a != 0)?;
+    read::<i32>(assembly + ASSEMBLY_WEAPONS_OFFSET + slot * 4).filter(|&id| id >= 0)
+}
+
 // ---- the player's paint data -----------------------------------------------------------------------------------------
 
 // [[[GameDataMan]+8]+0x788] + 0x14C (the Paint screen edits it in place); GameDataMan's static pointer (the game's own

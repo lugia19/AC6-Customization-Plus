@@ -16,7 +16,7 @@
 //! picker and the list preview live and cancel puts the block back.
 
 use std::sync::OnceLock;
-use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::game::{self, game_fn, leak_utf16, utf16};
 use crate::ui::{self, Closure, Description, Function, FunctionTable, Handle, Label, with_clip};
@@ -66,12 +66,41 @@ type SetUpPanelsFn = unsafe extern "system" fn(usize, usize, usize, usize) -> us
 
 unsafe extern "system" fn set_up_panels_impl(list: usize, content: usize, screen: usize, a4: usize) -> usize {
     let result = unsafe { orig::<SetUpPanelsFn>(&ORIG_SET_UP_PANELS)(list, content, screen, a4) };
+    PANEL_STATE.store(list, Ordering::Relaxed);
     unsafe {
         with_clip(screen + SCREEN_MAIN_CONTENT_OFFSET, ROWS_PANEL_NAME, |panel| panel.set_visible(false));
         // Hidden like the game's list hosts (0x140f344c0); the list window shows its host when it opens.
         with_root(entries_screen(list), |root| with_clip(root, TALL_LIST_HOST_NAME, |host| host.set_visible(false)));
     }
     result
+}
+
+// The panel state (the MainContent screen + 0x2618; research: paint-popup\highlight.md), kept from the Paint screen's
+// last setup: the current row's kind, the current panel (its window stack at [state] + 0x10).
+static PANEL_STATE: AtomicUsize = AtomicUsize::new(0);
+const STATE_KIND_OFFSET: usize = 0x13c;
+const STATE_PANEL_OFFSET: usize = 0x140;
+const WINDOW_STACK_OFFSET: usize = 0x10;
+// The panel's list widget's current entry.
+const PANEL_WIDGET_CURRENT_OFFSET: usize = 0x4f0 + 0xd4;
+
+/// Where the open Paint screen's cursor is: the current row's kind, and the entry under the cursor if it's in the
+/// panel. Only while the Paint screen is open.
+pub(crate) fn cursor() -> Option<(u32, Option<usize>)> {
+    let state = PANEL_STATE.load(Ordering::Relaxed);
+    if state == 0 {
+        return None;
+    }
+    let kind = game::read::<u32>(state + STATE_KIND_OFFSET)?;
+    let panel = game::read::<usize>(state + STATE_PANEL_OFFSET)?;
+    let stack = game::read::<usize>(state)? + WINDOW_STACK_OFFSET;
+    // 0x140c6be60(stack, window): whether the window is open (the cursor's in the panel).
+    let is_open: unsafe extern "system" fn(usize, usize) -> u8 = unsafe { game_fn(0x140c6be60) };
+    let entry = (panel != 0 && unsafe { is_open(stack, panel) } != 0)
+        .then(|| game::read::<i32>(panel + PANEL_WIDGET_CURRENT_OFFSET))
+        .flatten()
+        .map(|entry| entry as usize);
+    Some((kind, entry))
 }
 
 /// The object the panel state's owner gives the entries (its virtual 2; see `build`).

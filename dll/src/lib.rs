@@ -3,7 +3,7 @@
 //! - Menus: rows.rs (the extra rows: a color, optionally a choice and more colors; saved with the AC), panel.rs (their
 //!   panels, and DEVICE's brightness), ui.rs (the game's menu plumbing they use).
 //! - Features: generator.rs (the GENERATOR row: flames, expansions), hud.rs / hud_movie.rs (the HUD row), weapons.rs
-//!   (melee weapon colors, from a settings file next to the DLL for now).
+//!   (melee weapon colors: the WEAPON VFX row).
 //! - Shared mechanisms: ext_values.rs (the colors served to the tinted effect copies), columns.rs (the player's own
 //!   columns in the generator-dependent effect tables), game.rs (memory helpers, shared pointer chains).
 //!
@@ -12,7 +12,8 @@
 //! - 0x142b56480 FXR external value read, in ext_values.rs.
 //! - 0x140829de0 a character's generator color type and 0x140698380 the bullet effect spawn, in columns.rs.
 //! - 0x141609040 menu movie lookup and 0x1415f40b0 the Scaleform file opener: the HUD's look, in hud.rs.
-//! - 0x1410d8460 AC parts loader and 0x1415d0080 part name builder: the player's blade parts' copies, in weapons.rs.
+//! - 0x1410d8460 AC parts loader and 0x1415d0080 part name builder: the player's blade parts' copies; 0x14102c4c0 the
+//!   Paint preview's highlight: WEAPON VFX flashes the weapons; in weapons.rs.
 //! The game's Arxan protection restores code it guards to its original bytes at irregular times, silently removing
 //! hooks: the mod's me3 profile turns it off (disable_arxan).
 //!
@@ -41,24 +42,11 @@ use retour::RawDetour;
 const UPDATE_INTERVAL: Duration = Duration::from_millis(200);
 
 static LOG: OnceLock<Mutex<File>> = OnceLock::new();
-static MODULE: AtomicUsize = AtomicUsize::new(0);
 
 pub(crate) fn log(msg: &str) {
     if let Some(mut f) = LOG.get().and_then(|l| l.lock().ok()) {
         let _ = writeln!(f, "{msg}");
     }
-}
-
-unsafe extern "system" {
-    fn GetModuleFileNameW(module: usize, name: *mut u16, size: u32) -> u32;
-}
-
-/// The folder this DLL is in.
-pub(crate) fn module_dir() -> std::path::PathBuf {
-    let mut name = [0u16; 1024];
-    let length = unsafe { GetModuleFileNameW(MODULE.load(Ordering::Relaxed), name.as_mut_ptr(), name.len() as u32) };
-    let path = std::path::PathBuf::from(String::from_utf16_lossy(&name[..length as usize]));
-    path.parent().map(|dir| dir.to_path_buf()).unwrap_or_default()
 }
 
 /// A hooked function's original (its trampoline), typed as `F` (an `unsafe extern "system" fn`).
@@ -120,6 +108,7 @@ fn init() {
     // Before the hooks go live: a Paint list built after that has them, and the external values are served.
     generator::claim_row();
     hud::claim_row();
+    weapons::claim_row();
     ext_values::register(generator::ext_blocks().chain(weapons::ext_blocks()).collect());
     match install() {
         Ok(()) => {
@@ -131,10 +120,9 @@ fn init() {
 }
 
 #[unsafe(no_mangle)]
-extern "system" fn DllMain(module: *mut u8, reason: u32, _reserved: *mut u8) -> i32 {
+extern "system" fn DllMain(_module: *mut u8, reason: u32, _reserved: *mut u8) -> i32 {
     const DLL_PROCESS_ATTACH: u32 = 1;
     if reason == DLL_PROCESS_ATTACH {
-        MODULE.store(module as usize, Ordering::Relaxed);
         init();
     }
     1

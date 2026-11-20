@@ -29,8 +29,8 @@ The color rows come from a loop over the slot list (`0x14045d300`, a static {0..
 - **Not normal** (5, DEVICE): the row is built by `0x140f3b1c0(screen, list, slot, label)`. Confirming it opens the
   color picker directly.
 
-Confirming a row asks `0x140f40d10` for the slots its editor edits: kind k -> {k}, color set -> all six, anything
-else -> none.
+Every frame `0x140f40d10` gives the current row's slots (kind k -> {k}, color set -> all six, anything else ->
+none), kept in the edit context (`+0x30`) for the preview's highlight (below).
 
 The panel of a normal row comes from `0x140f43610(list, out, row kind)`: a switch with cases for kinds 0-4, each
 calling the panel builder `0x140f49590(.., .., slot)` with its slot as a constant (and nothing for 5). The panel
@@ -118,6 +118,25 @@ constructs the panel object on a panel clip (`0x140f47160(panel, clip handle, de
   than the stock host, using the full height. The DLL finds it under the root (`0x140c8a6f0`) and hides it at setup.
 - Clip handles (0x60 bytes) point to themselves: they are built in place and never moved (a moved one crashed).
 
+## The highlight
+
+The AC preview flashes the parts the cursor's row edits (research: `AC6_tools\Research\paint-popup\highlight.md`).
+
+- **What decides it.** Every frame the outer Paint screen's update (`0x140f4e610`) calls `0x14102c4c0(model view,
+  &sections, &slots, filter)`, spans of u8 {begin, end}: the category's sections (`0x14045d960`) and a copy of the
+  edit context's slot span (above); on the category level, all six slots instead (that call returns to `0x140f4e814`,
+  the other one to `0x140f4e86e`). It stores them in the view's highlight object (`view + 0x178`) and restarts the
+  pulse when the pointers change.
+- **The draw** (`0x1413b1c30`) paints the model from the paint data, then asks the highlight object for an overlay
+  (`0x1413aca90`: per slot the menu's orange at a pulsing alpha if highlighted, else nothing) and applies it to the
+  listed sections' models. The overlay is local to the draw: the paint data is never touched.
+- **WEAPON VFX** (`dll/src/weapons.rs`): our kinds get no slots, so nothing would flash. A hook on `0x14102c4c0`
+  (an entry stub keeps the return address) acts only on the `0x140f4e86e` call: on WEAPON VFX it passes the weapons'
+  units instead, all six slots, from static arrays: on the row both (sections 8 L-arm unit, 13 L-back unit), in the
+  panel the hovered entry's. Where the cursor is comes from the panel state the setup hook keeps (`panel::cursor`): the
+  current row's kind `+0x13c`, the current panel `+0x140`, open if on the window stack (`0x140c6be60([state] + 0x10,
+  panel)`), its current entry at panel `+0x4f0 + 0xd4`.
+
 ## Storage
 
 The paint data is 14 sections of 0x44 bytes, saved and carried by designs as one 0x3b8 block:
@@ -141,6 +160,25 @@ Why a row is AC-wide and can't be per part: a stock row's color lives in the sel
 head, core...), which is what makes it per part. An extra row has no slot in those sections (they only have six
 colors), so its one color lives in a section of its own and the selected part is ignored. Per-part values would
 need a place per part: ten sections' worth, and only three are free.
+
+What each free section holds (empty cells: unused):
+
+| Section | Row | colors 0-5 | material 0 | pattern colors 0-3 | materials 1-5, weathering, pattern design / size |
+|---|---|---|---|---|---|
+| 7 | 0 GENERATOR | 0 thruster color, 1 accent color, 2 expansion color | flame type | | |
+| 6 | 1 HUD | 0 HUD color, 1 warning color | opacity | | |
+| 9 | 2 WEAPON VFX | weapons 0-5 (dll/src/weapons.rs WEAPONS order) | | weapons 6-9 | |
+| 10 | not ours (written by something else; Sundance's Extension parts mod uses it) | | | | |
+
+WEAPON VFX keeps one color per melee weapon (ten), and its panel shows the two equipped ones (`rows::claim_dynamic`).
+
+Checked (2026-11-20) that the unused fields of these sections are safe: every paint writer (color, material, pattern
+design / size / colors, weathering) takes its sections from the category table `0x14045d960`, whose lists are
+{0, 1, 2, 3, 4} (ENTIRE FRAME), {5, 8, 12, 13, 11} (ALL UNITS) and one section per single part: never 6, 7, 9 or 10.
+The pattern color writer `0x14045af30` writes `+0x30 + (section * 0x11 + index) * 4` for listed sections only. Saves
+and designs move the block as a whole (`0x14045ad80` / `0x14045ae80` stream all 0x3b8 bytes). At runtime, test values
+in section 9's pattern colors survived the Paint screen's save, a COLOR SET preset, pattern changes on ENTIRE FRAME and
+ALL UNITS, a design save / load (another design replaced them, ours restored them) and a restart.
 
 The game writes alpha 0xFF into every color it stores (unused sections hold its default grey; old saves can have
 black with alpha 0). A color picked in an extra row is stored with alpha 0xFE; anything else means "not picked" and

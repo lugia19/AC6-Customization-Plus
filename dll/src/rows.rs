@@ -21,9 +21,10 @@ use crate::game::{self, leak_utf16};
 use crate::ui::{self, Closure, Function, FunctionTable, Label};
 use crate::{Hook, log, orig};
 
-// The rows, top to bottom (row 2 is free).
+// The rows, top to bottom.
 pub(crate) const ROW_THRUSTER: usize = 0;
 pub(crate) const ROW_HUD: usize = 1;
+pub(crate) const ROW_WEAPONS: usize = 2;
 const ROW_COUNT: usize = 3;
 // A row's kind is FIRST_KIND + its index: past the stock ones (0-5 the color slots, 6 COLOR SET, 7 PATTERN,
 // 8 WEATHERING).
@@ -57,6 +58,18 @@ struct Row {
     /// The extra colors' names (the second color, the third).
     extra_colors: &'static [&'static [u16]],
     choices: Option<Choices>,
+    /// Labels decided when the panel is built (claim_dynamic): a color's, by which.
+    labels: Option<fn(usize) -> &'static [u16]>,
+    /// Where an entry's color is (claim_dynamic): see Slot.
+    slot: Option<fn(usize) -> Option<Slot>>,
+}
+
+/// Where a dynamic row's entry keeps its color right now: an offset in the row's section (a color or pattern color
+/// field), and its default (0xRRGGBB).
+#[derive(Clone, Copy)]
+pub(crate) struct Slot {
+    pub(crate) offset: usize,
+    pub(crate) default: u32,
 }
 
 struct Choices {
@@ -92,7 +105,7 @@ fn claimed_rows() -> impl Iterator<Item = (usize, &'static Row)> {
 }
 
 /// The claimed row with this kind.
-fn row_of_kind(kind: u32) -> Option<usize> {
+pub(crate) fn row_of_kind(kind: u32) -> Option<usize> {
     let row = kind.checked_sub(FIRST_KIND)? as usize;
     settings(row).map(|_| row)
 }
@@ -136,6 +149,27 @@ pub(crate) fn claim(
         }),
         extra_colors: extra_colors.iter().map(|&(label, _)| leak_utf16(label)).collect::<Vec<_>>().leak(),
         choices,
+        labels: None,
+        slot: None,
+    };
+    assert!(ROWS[row].set(settings).is_ok(), "row {row} claimed twice");
+}
+
+/// A row of `count` colors (1 to 3, no choices) whose entries are decided when its panel is built: their labels
+/// (`labels(which)`, kept forever) and where their colors are (`slot(which)`; None: nothing to edit, shown white).
+/// Lets a row keep more colors in its section than its panel shows at once.
+pub(crate) fn claim_dynamic(row: usize, label: &str, count: usize, labels: fn(usize) -> &'static [u16],
+                            slot: fn(usize) -> Option<Slot>) {
+    assert!((1..=MAX_COLORS).contains(&count));
+    let settings = Row {
+        label: leak_utf16(label),
+        color_name: None,
+        default_colors: [ALPHA_MASK; MAX_COLORS],
+        // The extra colors' labels come from `labels`; only their count matters here.
+        extra_colors: vec![&[0u16][..]; count - 1].leak(),
+        choices: None,
+        labels: Some(labels),
+        slot: Some(slot),
     };
     assert!(ROWS[row].set(settings).is_ok(), "row {row} claimed twice");
 }
@@ -146,6 +180,19 @@ fn color_offset(row: usize, which: usize) -> usize {
 
 fn choice_offset(row: usize) -> usize {
     SECTIONS[row] as usize * SECTION_SIZE + SECTION_MATERIALS_OFFSET
+}
+
+/// Where an entry's color is, and its default as stored: a dynamic row's slot, else its color field.
+fn entry(settings: &Row, row: usize, which: usize) -> Option<(usize, u32)> {
+    match settings.slot {
+        Some(slot) => slot(which).map(|slot| (section_offset(row) + slot.offset, stored_default(slot.default))),
+        None => Some((color_offset(row, which), settings.default_colors[which])),
+    }
+}
+
+/// Where a row's section starts in the paint block.
+pub(crate) fn section_offset(row: usize) -> usize {
+    SECTIONS[row] as usize * SECTION_SIZE
 }
 
 /// A color shown for a stored value, opaque: the stored one if it was picked in the row, otherwise the default.
@@ -168,6 +215,13 @@ pub(crate) fn color(row: usize, which: usize) -> Option<u32> {
     Some(swap_red_blue(shown_color(settings(row)?, which, game::paint_value(color_offset(row, which))?)))
 }
 
+/// A color picked in a row, at `offset` in its section on the player's AC (0xRRGGBB): None if not picked or the
+/// player's data isn't loaded.
+pub(crate) fn picked_at(row: usize, offset: usize) -> Option<u32> {
+    let stored = game::paint_value::<u32>(section_offset(row) + offset)?;
+    (stored & ALPHA_MASK == PICKED_ALPHA).then(|| swap_red_blue(stored))
+}
+
 /// A row's choice on the player's AC, as an index into its labels: the picked one, or the default. None if it has no
 /// choices or the player's data isn't loaded.
 pub(crate) fn choice(row: usize) -> Option<u32> {
@@ -179,17 +233,22 @@ pub(crate) fn choice(row: usize) -> Option<u32> {
 
 /// A row's color (`which`: 0 the row's, 1 and 2 its extra ones) as stored (RGBA bytes, alpha 0xFF).
 pub(crate) unsafe fn stored_color(paint: usize, row: usize, which: usize) -> u32 {
-    let Some(settings) = settings(row) else { return ALPHA_MASK };
-    shown_color(settings, which, unsafe { *((paint + color_offset(row, which)) as *const u32) })
+    let Some((offset, default)) = settings(row).and_then(|s| entry(s, row, which)) else { return u32::MAX };
+    let stored = unsafe { *((paint + offset) as *const u32) };
+    if stored & ALPHA_MASK == PICKED_ALPHA { stored | ALPHA_MASK } else { default }
 }
 
 pub(crate) unsafe fn store_color(paint: usize, row: usize, which: usize, color: u32) {
-    unsafe { *((paint + color_offset(row, which)) as *mut u32) = (color & !ALPHA_MASK) | PICKED_ALPHA };
+    let Some((offset, _)) = settings(row).and_then(|s| entry(s, row, which)) else { return };
+    unsafe { *((paint + offset) as *mut u32) = (color & !ALPHA_MASK) | PICKED_ALPHA };
 }
 
 /// A color's name, as the picker's title: the row's color name (else its label), an extra color's.
 pub(crate) fn color_label(row: usize, which: usize) -> &'static [u16] {
     let Some(settings) = settings(row) else { return &[0] };
+    if let Some(labels) = settings.labels {
+        return labels(which);
+    }
     match which {
         0 => settings.color_name.unwrap_or(settings.label),
         _ => settings.extra_colors.get(which - 1).copied().unwrap_or(&[0]),
@@ -198,7 +257,8 @@ pub(crate) fn color_label(row: usize, which: usize) -> &'static [u16] {
 
 /// The row's color's name in the panel, if it has its own.
 pub(crate) fn color_name(row: usize) -> Option<&'static [u16]> {
-    settings(row)?.color_name
+    let settings = settings(row)?;
+    settings.labels.map(|labels| labels(0)).or(settings.color_name)
 }
 
 /// How many colors a row has besides its own.

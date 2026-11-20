@@ -37,6 +37,13 @@ cross-checks are in the AC6_tools workspace (`Research\weapon-vfx`).
   parameter, its rgba at `+0x40` (intensity at `+0x50`); then `0x1423020a0(material)` rebuilds the material's
   constant buffer, as the game's own matbin reload does. Each blade color takes the chosen color at its stock
   brightness (brightest channel); intensities stay.
-- **Effect colors**: served as external values, nine per weapon from 900100 (weapon i at 900100 + 10 i), laid out
-  like the thruster colors.
-- **Settings**: `customization_plus_weapons.txt` next to the DLL, reread when it changes (until the WEAPON VFX row).
+- **Effect colors**: served as external values, nine per weapon from 900000 + 10 × its model, laid out like the
+  thruster colors (`dll/src/ext_values.rs`).
+- **Settings**: the WEAPON VFX row (`rows::claim_dynamic`). Every melee weapon has its own color in the row's paint
+  section (`WEAPONS` order: colors 0-5, then pattern colors 0-3; docs/paint-rows.md). The panel shows the two equipped
+  ones, labelled with the game's own names (item text 11 by EquipParamWeapon ID, through the message repository
+  `0x14157d750`): the left-arm melee weapon and the left-back one, read from the player's assembly `[ChrIns + 0x47e0]`,
+  weapons at `+0xF4 + slot * 4` (slot 0 left arm, 2 left back; the game's getter `0x1406f5890`). The update loop serves
+  the equipped weapons' colors to their models (effects, blade material). The preview's highlight flashes the weapons'
+  units (hook on `0x14102c4c0`; docs/paint-rows.md, "The highlight").
+- **Effects left stock:** the lance's exhaust (991309, built like the AC's own exhaust, 410031).
