@@ -18,11 +18,12 @@
 use std::sync::OnceLock;
 use std::sync::atomic::AtomicUsize;
 
-use crate::ui::{self, Closure, Description, Function, FunctionTable, Handle, Label, game_fn, with_clip};
+use crate::game::{self, game_fn, leak_utf16, utf16};
+use crate::ui::{self, Closure, Description, Function, FunctionTable, Handle, Label, with_clip};
 use crate::{Hook, log, orig, rows};
 
 pub(crate) const DEVICE_SLOT: u8 = 5;
-static BRIGHTNESS: [u16; 11] = ui::utf16(b"Brightness\0");
+static BRIGHTNESS: [u16; 11] = utf16(b"Brightness\0");
 // DEVICE's materials, and where their glow is: a float at + 8 of the material's param row (0x140e0cdd0(material)).
 const DEVICE_MATERIALS: std::ops::Range<u32> = 90..100;
 const MATERIAL_ROW_GLOW_OFFSET: usize = 8;
@@ -310,8 +311,8 @@ unsafe extern "system" fn material_text_impl(info: *const u8, out: *mut Label) -
         let material_row: unsafe extern "system" fn(u32) -> usize = unsafe { game_fn(0x140e0cdd0) };
         DEVICE_MATERIALS
             .map(|material| {
-                let glow = crate::read::<f32>(unsafe { material_row(material) } + MATERIAL_ROW_GLOW_OFFSET).unwrap_or(1.0);
-                ui::leak_utf16(&format!("Brightness {}%", (glow * 100.0).round() as u32))
+                let glow = game::read::<f32>(unsafe { material_row(material) } + MATERIAL_ROW_GLOW_OFFSET).unwrap_or(1.0);
+                leak_utf16(&format!("Brightness {}%", (glow * 100.0).round() as u32))
             })
             .collect()
     });

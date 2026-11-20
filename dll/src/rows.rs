@@ -17,8 +17,9 @@ use std::sync::OnceLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::panel::{self, DEVICE_SLOT};
-use crate::ui::{self, Closure, Function, FunctionTable, Label, leak_utf16};
-use crate::{Hook, log, orig, paint_data};
+use crate::game::{self, leak_utf16};
+use crate::ui::{self, Closure, Function, FunctionTable, Label};
+use crate::{Hook, log, orig};
 
 // The rows, top to bottom (row 2 is free).
 pub(crate) const ROW_THRUSTER: usize = 0;
@@ -164,14 +165,14 @@ fn shown_choice(choices: &Choices, stored: u16) -> u32 {
 /// A row's color (`which`: 0 its color, 1 and 2 its extra ones) on the player's AC (0xRRGGBB): the picked one, or the
 /// default. None while the player's data isn't loaded.
 pub(crate) fn color(row: usize, which: usize) -> Option<u32> {
-    Some(swap_red_blue(shown_color(settings(row)?, which, paint_data::value(color_offset(row, which))?)))
+    Some(swap_red_blue(shown_color(settings(row)?, which, game::paint_value(color_offset(row, which))?)))
 }
 
 /// A row's choice on the player's AC, as an index into its labels: the picked one, or the default. None if it has no
 /// choices or the player's data isn't loaded.
 pub(crate) fn choice(row: usize) -> Option<u32> {
     let choices = settings(row)?.choices.as_ref()?;
-    Some(shown_choice(choices, paint_data::value(choice_offset(row))?))
+    Some(shown_choice(choices, game::paint_value(choice_offset(row))?))
 }
 
 // ---- for the panel (panel.rs): in a paint block, the edit context's working one -------------------------------------

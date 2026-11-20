@@ -1,0 +1,68 @@
+//! The game (1.09.1) as several modules read it: memory and string helpers, and the pointer chains they share.
+//! Addresses only one module uses stay in that module.
+
+unsafe extern "system" {
+    fn GetCurrentProcess() -> isize;
+    fn ReadProcessMemory(process: isize, address: usize, buffer: *mut u8, size: usize, read: *mut usize) -> i32;
+}
+
+/// Reads memory that may not be mapped (pointer chains while loading, effects being freed) without faulting.
+pub(crate) fn read<T: Copy + Default>(addr: usize) -> Option<T> {
+    let mut v = T::default();
+    let mut n = 0;
+    let ok = unsafe { ReadProcessMemory(GetCurrentProcess(), addr, &mut v as *mut T as *mut u8, size_of::<T>(), &mut n) };
+    (ok != 0 && n == size_of::<T>()).then_some(v)
+}
+
+/// A game function at `address`, typed as `F` (an `unsafe extern "system" fn`).
+pub(crate) unsafe fn game_fn<F: Copy>(address: usize) -> F {
+    unsafe { std::mem::transmute_copy(&address) }
+}
+
+/// UTF-16 with a terminator, at compile time (ASCII only).
+pub(crate) const fn utf16<const N: usize>(text: &[u8; N]) -> [u16; N] {
+    let mut out = [0; N];
+    let mut i = 0;
+    while i < N {
+        out[i] = text[i] as u16;
+        i += 1;
+    }
+    out
+}
+
+/// UTF-16 with a terminator, kept forever: the game's labels hold the text's address.
+pub(crate) fn leak_utf16(text: &str) -> &'static [u16] {
+    text.encode_utf16().chain([0]).collect::<Vec<u16>>().leak()
+}
+
+// ---- characters ------------------------------------------------------------------------------------------------------
+
+const WORLD_CHR_MAN_ADDR: usize = 0x144e0f598;
+const PLAYER_INS_OFFSET: usize = 0xA5A0;
+// ChrIns: its handle; [[+ 0x320]] is its module that the generator color type takes; its AC parts object.
+pub(crate) const CHR_HANDLE_OFFSET: usize = 8;
+pub(crate) const CHR_MODULES_OFFSET: usize = 0x320;
+pub(crate) const CHR_PARTS_OFFSET: usize = 0x47e8;
+
+/// The player's ChrIns (none while loading).
+pub(crate) fn player() -> Option<usize> {
+    let world_chr_man = read::<usize>(WORLD_CHR_MAN_ADDR).filter(|&p| p != 0)?;
+    read::<usize>(world_chr_man + PLAYER_INS_OFFSET).filter(|&p| p != 0)
+}
+
+// ---- the player's paint data -----------------------------------------------------------------------------------------
+
+// [[[GameDataMan]+8]+0x788] + 0x14C (the Paint screen edits it in place); GameDataMan's static pointer (the game's own
+// getters read it as `mov rax,[this]` / `mov rax,[rax+8]`). Null while loading: checked reads.
+const GAME_DATA_MAN_ADDR: usize = 0x144e03a08;
+const PLAYER_DATA_OFFSET: usize = 0x8;
+const PAINT_DATA_OFFSET: usize = 0x788;
+const PAINT_BLOCK_OFFSET: usize = 0x14c;
+
+/// The value at `offset` in the player's paint block, if the chain resolves right now.
+pub(crate) fn paint_value<T: Copy + Default>(offset: usize) -> Option<T> {
+    let game_data = read::<usize>(GAME_DATA_MAN_ADDR)?;
+    let player = read::<usize>(game_data + PLAYER_DATA_OFFSET)?;
+    let paint = read::<usize>(player + PAINT_DATA_OFFSET)?;
+    read::<T>(paint + PAINT_BLOCK_OFFSET + offset)
+}

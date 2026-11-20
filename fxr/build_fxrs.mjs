@@ -1,10 +1,10 @@
 // Builds the custom generator flames. The game has a flame per effect row and generator type (combustion, current, Coral):
 // the given rows, three stock thruster FXRs each. Only the player's AC gets the custom types (the DLL hooks the
-// generator type, dll/src/thrusters.rs). For every stock FXR S in them:
+// generator type, dll/src/columns.rs). For every stock FXR S in them:
 // - a bundle at S + BUNDLE_OFFSET (what the custom type's column points at), which plays the two copies of S together;
 // - the copies at S + MAIN.offsets (add, remove): plain copies of S (and of every FXR S references, remapped to
 //   the same copy), every color whitened to its brightness and tinted by external values the DLL serves
-//   for the player's thruster color (dll/src/thrusters.rs set_channels):
+//   for the player's thruster color (dll/src/ext_values.rs set_channels):
 //   - add: the flame with the color added (lights and lens flares too); alpha-blended particles (smoke) get the plain
 //     color, which they can show as is;
 //   - remove: the additive particles again, subtracting what the color lacks from the background, so dark colors
@@ -43,7 +43,7 @@ import {
 import fs from 'node:fs'
 import path from 'node:path'
 
-// The colors the DLL serves (dll/src/thrusters.rs), each as nine external values from `ext`: what the add copy adds,
+// The colors the DLL serves (dll/src/ext_values.rs), each as nine external values from `ext`: what the add copy adds,
 // what the remove copy subtracts, the plain color for alpha-blended particles; red, green, blue each, as 1 + a 0..1
 // amount; 0 means no DLL. Each kind of copy has its own [add, remove] ID offsets.
 const MAIN = { ext: 900001, offsets: [9100000, 9200000] } // the thruster color

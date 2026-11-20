@@ -147,7 +147,7 @@ black with alpha 0). A color picked in an extra row is stored with alpha 0xFE; a
 the row shows its default. A choice is stored as 0xFE00 + its index, not as the material's ID (the unused
 sections hold the default material, 18); anything else, or an index past the row's choices, means the default.
 
-The player's paint block, which `rows::color` and `rows::choice` read (`dll/src/paint_data.rs`): `[[[GameDataMan]+8]+0x788]+0x14C`
+The player's paint block, which `rows::color` and `rows::choice` read (`dll/src/game.rs` paint_value): `[[[GameDataMan]+8]+0x788]+0x14C`
 (GameDataMan's pointer is at `0x144e03a08`; the chain is null while loading).
 
 ## The movie

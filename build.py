@@ -23,12 +23,12 @@ PACKAGE = os.path.join(ROOT, "package")
 # Thruster color type N uses column sfxIdN of the generator-dependent effect tables. Stock types 0-2 (orange, blue,
 # Coral); the flame types are custom types 3-6 (unused in vanilla): combustion, current, Coral, ALLMIND, whose flames
 # are bundles of copies tinted with the player's color (fxr/build_fxrs.mjs). Only the player's AC gets them: the DLL
-# hooks the type (dll/src/thrusters.rs). Elsewhere a custom type uses what stock type CUSTOM_TYPES_STOCK[k] does.
+# hooks the type (dll/src/columns.rs). Elsewhere a custom type uses what stock type CUSTOM_TYPES_STOCK[k] does.
 STOCK_COLOR_TYPES = (0, 1, 2)
 FIRST_CUSTOM_TYPE = 3
 CUSTOM_TYPES_STOCK = (0, 1, 2, 1)
 # GeneratorTypeSfxIdRplace_PC rows with custom columns: the core expansions' (assault armor, pulse armor, pulse
-# protection...) and the melee weapons' (WEAPON_EFFECTS); dll/src/thrusters.rs EXPANSION_EFFECTS mirrors it.
+# protection...) and the melee weapons' (WEAPON_EFFECTS); dll/src/columns.rs CUSTOM_COLUMN_EFFECTS mirrors it.
 EXPANSION_ROWS = range(990000, 1000000)
 # Expansion models (RichModels) whose material has its own color (light blue, 83038 orange), which a tint can only
 # multiply: the copies use a neutral version, model and material renamed s8... -> s9... (s88232 -> s98232; same length,
@@ -374,10 +374,10 @@ def main():
                     table.set(row, column, other_bundles.get(sfx, sfx))
         table.save()
 
-    # The THRUSTER row's choices (dll/src/thrusters.rs FLAME_TYPES): "generator's own" and the custom flame types.
+    # The THRUSTER row's choices (dll/src/generator.rs FLAME_TYPES): "generator's own" and the custom flame types.
     flame_types = 1 + len(CUSTOM_TYPES_STOCK)
-    labels = re.search(r"const FLAME_TYPES: \[&str; (\d+)\]", open(os.path.join(ROOT, "dll", "src", "thrusters.rs")).read())
-    assert int(labels.group(1)) == flame_types, f"thrusters.rs names {labels.group(1)} flame types, the params have {flame_types}"
+    labels = re.search(r"const FLAME_TYPES: \[&str; (\d+)\]", open(os.path.join(ROOT, "dll", "src", "generator.rs")).read())
+    assert int(labels.group(1)) == flame_types, f"generator.rs names {labels.group(1)} flame types, the params have {flame_types}"
 
     witchy([unpacked(a) for a in [*archives, *weapon_parts]], [*archives, *built_parts])
 

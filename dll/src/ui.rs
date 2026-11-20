@@ -1,26 +1,7 @@
 //! The game's menu plumbing, as the Paint screen code uses it (research: AC6_tools\Research\paint-popup, OVERVIEW.md
 //! and wide\ / wide2\ report_*.md): text labels, clip handles, std::functions, jobs and list descriptions.
 
-/// UTF-16 with a terminator, at compile time (ASCII only).
-pub(crate) const fn utf16<const N: usize>(text: &[u8; N]) -> [u16; N] {
-    let mut out = [0; N];
-    let mut i = 0;
-    while i < N {
-        out[i] = text[i] as u16;
-        i += 1;
-    }
-    out
-}
-
-/// UTF-16 with a terminator, kept forever: the game's labels hold the text's address.
-pub(crate) fn leak_utf16(text: &str) -> &'static [u16] {
-    text.encode_utf16().chain([0]).collect::<Vec<u16>>().leak()
-}
-
-/// A game function at `address`, typed as `F` (an `unsafe extern "system" fn`).
-pub(crate) unsafe fn game_fn<F: Copy>(address: usize) -> F {
-    unsafe { std::mem::transmute_copy(&address) }
-}
+use crate::game::{game_fn, utf16};
 
 // ---- layouts shared by the list code ---------------------------------------------------------------------------------
 

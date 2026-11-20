@@ -1,11 +1,11 @@
 //! WEAPON VFX: the player's melee weapons in colors of their own, one per weapon model, a global setting.
-//! - Effects: each weapon effect has a replace row whose custom columns (the player's only: thrusters.rs's color type
-//!   hook) play a copy tinted by external values (build.py WEAPON_EFFECTS): a weapon's color on EXT_BASE + 10 * its
-//!   model, laid out like thrusters.rs's (set_channels).
+//! - Effects: each weapon effect has a replace row whose custom columns (the player's only: columns.rs's color type
+//!   hook) play a copy tinted by external values (build.py WEAPON_EFFECTS): a weapon's color on a block from EXT_BASE +
+//!   10 * its model (ext_values.rs).
 //! - Blades that are a material of the part (build.py WEAPON_BLADE_MATERIALS): the player's AC loads a copy of the part,
 //!   model 0xxx -> 9xxx, whose blade material is its own copy. Hooks: the AC parts loader 0x1410d8460 notes whether
-//!   the player's parts object ([player ChrIns + 0x47e8]) is loading (a thread-local: the name builder runs inside
-//!   it), the part name builder 0x1415d0080 then renames. The copied materials are found by name in the game's
+//!   the player's parts object is loading (a thread-local: the name builder runs inside it), the part name builder
+//!   0x1415d0080 then renames. The copied materials are found by name in the game's
 //!   material repository (MtdRepository) and their colors set like the game's own matbin reload does: the value, then a
 //!   commit that rebuilds the material's constant buffer.
 //! Colors: customization_plus_weapons.txt next to the DLL, "<model> = RRGGBB" per line, reread when it changes. A
@@ -13,11 +13,11 @@
 
 use std::cell::Cell;
 use std::collections::BTreeMap;
-use std::sync::atomic::{AtomicU32, AtomicUsize};
-use std::time::Duration;
+use std::path::PathBuf;
+use std::sync::atomic::AtomicUsize;
 
-use crate::thrusters::{self, CHANNEL_COUNT};
-use crate::ui::{game_fn, utf16};
+use crate::ext_values::{self, Block, Channels};
+use crate::game::{self, CHR_PARTS_OFFSET, game_fn, utf16};
 use crate::{Hook, log, orig};
 
 struct Weapon {
@@ -53,7 +53,6 @@ const BLADE_COLORS: [&[u16]; 3] = [
 const PARAM_VALUE_OFFSET: usize = 0x40;
 
 const SETTINGS_FILE: &str = "customization_plus_weapons.txt";
-const POLL_INTERVAL: Duration = Duration::from_millis(250);
 
 const MTD_REPOSITORY_ADDR: usize = 0x144e1cc38;
 // `MtdResCap* find(repository, const wchar_t* name)`; the material at rescap + 0x78.
@@ -62,7 +61,6 @@ const RESCAP_MATERIAL_OFFSET: usize = 0x78;
 // `param* find_param(material, const wchar_t* name)`, `void commit(material)`.
 const FIND_PARAM_ADDR: usize = 0x142300730;
 const COMMIT_ADDR: usize = 0x1423020a0;
-const CHR_PARTS_OFFSET: usize = 0x47e8;
 // The name builder's output, an FD4 wide string: +8 the characters (inline up to 7, else a pointer there), +0x18 the
 // length, +0x20 the capacity.
 const STRING_LENGTH_OFFSET: usize = 0x18;
@@ -75,8 +73,7 @@ type PartNameFn = unsafe extern "system" fn(usize, usize, usize, usize, usize) -
 
 static ORIG_LOADER: AtomicUsize = AtomicUsize::new(0);
 static ORIG_PART_NAME: AtomicUsize = AtomicUsize::new(0);
-static CHANNELS: [[AtomicU32; CHANNEL_COUNT]; WEAPONS.len()] =
-    [const { [const { AtomicU32::new(0) }; CHANNEL_COUNT] }; WEAPONS.len()];
+static CHANNELS: [Channels; WEAPONS.len()] = [const { ext_values::unset() }; WEAPONS.len()];
 
 thread_local! {
     // Whether the AC parts loader is loading the player's parts, while it runs.
@@ -94,7 +91,7 @@ pub(crate) fn hooks() -> [Hook; 2] {
 
 unsafe extern "system" fn loader_impl(parts: usize, a2: usize, a3: usize, a4: usize, a5: usize, a6: usize, a7: usize,
                                       a8: usize, a9: usize) -> usize {
-    let players = crate::player().and_then(|player| crate::read::<usize>(player + CHR_PARTS_OFFSET)) == Some(parts);
+    let players = game::player().and_then(|player| game::read::<usize>(player + CHR_PARTS_OFFSET)) == Some(parts);
     let outer = LOADING_PLAYERS.replace(players);
     let result = unsafe { orig::<LoaderFn>(&ORIG_LOADER)(parts, a2, a3, a4, a5, a6, a7, a8, a9) };
     LOADING_PLAYERS.set(outer);
@@ -112,10 +109,10 @@ unsafe extern "system" fn part_name_impl(out: usize, row: usize, a3: usize, a4: 
 }
 
 fn rename_blade_part(string: usize) -> Option<()> {
-    let length = crate::read::<usize>(string + STRING_LENGTH_OFFSET)?;
-    let inline = crate::read::<usize>(string + STRING_CAPACITY_OFFSET)? <= 7;
-    let at = if inline { string + 8 } else { crate::read::<usize>(string + 8)? };
-    let chars = crate::read::<[u16; 10]>(at)?;
+    let length = game::read::<usize>(string + STRING_LENGTH_OFFSET)?;
+    let inline = game::read::<usize>(string + STRING_CAPACITY_OFFSET)? <= 7;
+    let at = if inline { string + 8 } else { game::read::<usize>(string + 8)? };
+    let chars = game::read::<[u16; 10]>(at)?;
     let digits = String::from_utf16(chars.get(6..9)?).ok()?;
     let ends = length == 9 || length > 9 && chars[9] == u16::from(b'_');
     let model: u16 = digits.parse().ok()?;
@@ -126,11 +123,8 @@ fn rename_blade_part(string: usize) -> Option<()> {
     Some(())
 }
 
-/// The value we serve for an external value ID, if it's a weapon's (thrusters.rs serves them).
-pub(crate) fn served(id: i32) -> Option<&'static AtomicU32> {
-    let offset = id.checked_sub(EXT_BASE)?;
-    let weapon = WEAPONS.iter().position(|w| i32::from(w.model) == offset / EXT_BLOCK)?;
-    CHANNELS[weapon].get(usize::try_from(offset % EXT_BLOCK).ok()?)
+pub(crate) fn ext_blocks() -> impl Iterator<Item = Block> {
+    WEAPONS.iter().zip(&CHANNELS).map(|(weapon, channels)| Block { first: EXT_BASE + EXT_BLOCK * i32::from(weapon.model), channels })
 }
 
 /// A copied blade's material and color parameters, with their stock rgb.
@@ -140,13 +134,13 @@ struct Blade {
 }
 
 fn find_blade(name: &[u16]) -> Option<Blade> {
-    let repository = crate::read::<usize>(MTD_REPOSITORY_ADDR).filter(|&r| r != 0)?;
+    let repository = game::read::<usize>(MTD_REPOSITORY_ADDR).filter(|&r| r != 0)?;
     let rescap = Some(unsafe { game_fn::<FindFn>(FIND_MATERIAL_ADDR)(repository, name.as_ptr()) }).filter(|&r| r != 0)?;
-    let material = crate::read::<usize>(rescap + RESCAP_MATERIAL_OFFSET).filter(|&m| m != 0)?;
+    let material = game::read::<usize>(rescap + RESCAP_MATERIAL_OFFSET).filter(|&m| m != 0)?;
     let find_param: FindFn = unsafe { game_fn(FIND_PARAM_ADDR) };
     let params = BLADE_COLORS.iter().map(|color| {
         let param = Some(unsafe { find_param(material, color.as_ptr()) }).filter(|&p| p != 0)?;
-        Some((param, crate::read::<[f32; 3]>(param + PARAM_VALUE_OFFSET)?))
+        Some((param, game::read::<[f32; 3]>(param + PARAM_VALUE_OFFSET)?))
     });
     Some(Blade { material, params: params.collect::<Option<_>>()? })
 }
@@ -156,7 +150,7 @@ fn paint_blade(blade: &Blade, rgb: Option<u32>) {
     for &(param, stock) in &blade.params {
         let value = rgb.map_or(stock, |rgb| {
             let brightest = stock.iter().copied().fold(0.0, f32::max);
-            thrusters::channels(rgb).map(|c| c * brightest)
+            ext_values::channels(rgb).map(|c| c * brightest)
         });
         unsafe { *((param + PARAM_VALUE_OFFSET) as *mut [f32; 3]) = value };
     }
@@ -178,26 +172,36 @@ fn current_colors(path: &std::path::Path) -> BTreeMap<u16, u32> {
     read_colors(&std::fs::read_to_string(path).unwrap_or_default())
 }
 
-fn poll_loop() {
-    let path = crate::module_dir().join(SETTINGS_FILE);
-    if !path.exists() {
-        let lines: String = WEAPONS.iter().map(|w| format!("# {} = {:06X}  ({})\n", w.model, w.default, w.name)).collect();
-        let _ = std::fs::write(&path, format!("# WEAPON VFX colors: <model> = RRGGBB\n{lines}"));
+/// What was last applied, for the update loop (lib.rs).
+pub(crate) struct Weapons {
+    path: PathBuf,
+    // The blades' materials, once found (they load at boot), in WEAPONS' order.
+    blades: [Option<Blade>; WEAPONS.len()],
+    colors: Option<BTreeMap<u16, u32>>,
+}
+
+impl Weapons {
+    pub(crate) fn new() -> Self {
+        let path = crate::module_dir().join(SETTINGS_FILE);
+        if !path.exists() {
+            let lines: String = WEAPONS.iter().map(|w| format!("# {} = {:06X}  ({})\n", w.model, w.default, w.name)).collect();
+            let _ = std::fs::write(&path, format!("# WEAPON VFX colors: <model> = RRGGBB\n{lines}"));
+        }
+        Weapons { path, blades: [const { None }; WEAPONS.len()], colors: None }
     }
-    let mut blades: [Option<Blade>; WEAPONS.len()] = [const { None }; WEAPONS.len()];
-    let mut colors = None;
-    loop {
-        let now = current_colors(&path);
-        let changed = colors.as_ref() != Some(&now);
+
+    /// Applies the colors when they change, and to each blade material when it's found.
+    pub(crate) fn update(&mut self) {
+        let now = current_colors(&self.path);
+        let changed = self.colors.as_ref() != Some(&now);
         if changed {
             let listed: Vec<String> = now.iter().map(|(model, color)| format!("{model} #{color:06X}")).collect();
             log(&format!("weapons: colors {}", listed.join(", ")));
             for (weapon, channels) in WEAPONS.iter().zip(&CHANNELS) {
-                thrusters::set_channels(channels, now.get(&weapon.model).copied().unwrap_or(weapon.default));
+                ext_values::set_channels(channels, now.get(&weapon.model).copied().unwrap_or(weapon.default));
             }
         }
-        // The materials load at boot: each is looked for until found, then painted on every change.
-        for (weapon, slot) in WEAPONS.iter().zip(&mut blades) {
+        for (weapon, slot) in WEAPONS.iter().zip(&mut self.blades) {
             let Some(name) = weapon.blade else { continue };
             if slot.is_none() {
                 *slot = find_blade(name);
@@ -209,11 +213,6 @@ fn poll_loop() {
                 paint_blade(slot.as_ref().unwrap(), now.get(&weapon.model).copied());
             }
         }
-        colors = Some(now);
-        std::thread::sleep(POLL_INTERVAL);
+        self.colors = Some(now);
     }
-}
-
-pub(crate) fn start() {
-    std::thread::spawn(poll_loop);
 }
