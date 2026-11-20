@@ -216,3 +216,10 @@ Other findings:
 - Paint writers next to the color one (`0x14045afc0`, +8): `0x14045aee0` pattern design (+0x2c), `0x14045af90`
   pattern size (+0x2d), `0x14045af30` pattern color (+0x30), `0x14045b020` weathering (+4), `0x14045b070` material
   (+0x20 + slot * 2; reached from `0x140e0d100`).
+
+## DEVICE brightness
+
+Nothing new is added: the game's own material menu already lists the ten light intensity
+materials (90-99) for DEVICE, with their text and live preview, and the value is ordinary paint data. The DEVICE
+row was just built color-only, with no way into that menu. The row hooks build it like the other color rows,
+and its panel leads to that menu (`dll/src/panel.rs`).

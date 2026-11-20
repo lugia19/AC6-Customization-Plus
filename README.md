@@ -72,58 +72,19 @@ Coming from 0.1.0 (AC6-Thruster-Customization)? The save file has a new name: re
 
 ## How it works
 
-- **Paint rows.** The rows are list items the DLL adds to the list the game's row builder made, built the way the
-  game builds its own color rows (`dll/src/rows.rs`), shown by clips added to the Paint movie (`tools/build_gfx.py`
-  patches `menu/02_coloring.gfx`). Their panels are built by the DLL from the game's own menu pieces (`dll/src/panel.rs`):
-  the game's color picker, and option lists like the pattern's Size. A row keeps its colors and choice in a part of
-  the AC's paint data the game never uses, which is why a row is one value for the whole AC and not per part.
-  Details: [docs/paint-rows.md](docs/paint-rows.md).
-- **Flames.** The game keeps a flame per thruster effect and generator color type (combustion, current, Coral): 20
-  effects, a column per type. The regulation adds four columns, one per flame type, pointing at effects built by
-  `fxr/build_fxrs.mjs` that play recolored copies of that type's flame: one adding the color and one subtracting what
-  the color lacks (that's what makes dark colors work). Each time a character's thrusters fire, the game asks for its
-  generator's color type to pick the column; the DLL hooks that question and answers with your flame type's column
-  for your AC only, so every other AC, even with the same generator, keeps its stock flames.
-- **Expansions.** The same column picks the core expansions' effects from a second table, where the regulation points
-  the new columns at recolored copies tinted by the expansion color. Assault Armor's blast is the one exception: it's a
-  bullet's effect, spawned by plain ID, so the DLL also hooks the bullet effect spawn and, for your own bullets only
-  (the bullet knows its owner), looks the ID up in that table too. Some expansion meshes get their color from their
-  material, which a tint can only multiply: the copies use neutral versions of those models, with their material's
-  colors greyed (the package's `material/allmaterial.matbinbnd.dcx` adds those materials).
-- **Flame types.** ALLMIND is a boss, not an AC, with thruster effects of its own; its type plays the current flame
-  or the boss's effects (in `sfxbnd_m30`, scaled down for an AC). Each of those is drawn twice, once in the accent color and once in the
-  thruster color, weighted by the particle's age, and the two add up to the fade (an effect can only multiply in the
-  values the DLL serves, so one particle can't blend two of them; the copies share their random seeds, so they line up).
-- **DEVICE brightness.** Nothing new is added: the game's own material menu already lists the ten light intensity
-  materials (90-99) for DEVICE, with their text and live preview, and the value is ordinary paint data. The DEVICE
-  row was just built color-only, with no way into that menu. The row hooks build it like the other color rows,
-  and its panel leads to that menu (`dll/src/panel.rs`).
-- **HUD.** The game loads the HUD movie (`menu/01_000_fe.gfx`) once and builds each mission's HUD from it. The
-  package ships a prepared copy of it. Every time a sortie asks for the movie, the DLL reads the HUD rows,
-  drops the loaded movie and hands the game's loader a copy of the file it opened at boot, rewritten for them
-  (`dll/src/hud.rs`). Nothing is written to disk and nothing is remembered between sorties.
-
-  The movie holds about 2,400 colors: shape fills and outlines, text colors and color transforms. The build
-  (`tools/prepare_hud.py`) finds them all and appends a table of where they are to the movie, past the length the
-  game reads; it also gives each of the movie's 54 visible top-level elements a neutral color transform. The DLL
-  (`dll/src/hud_movie.rs`) then only runs each color in the table through one rule and writes the opacity into
-  those transforms' alpha. The rule: the movie's colors fall in two groups. Pale and grey ones are the HUD's base
-  color (`#DFFCFF` and its shades): they become the HUD color at the same brightness. Saturated ones are state
-  colors (the stagger bar's orange and red, reload and overheat, low AP, boss HP green, condition gauge
-  purple...): their hue is rotated, and their saturation and brightness scaled, by what takes pure red to the
-  warning color.
-- **Melee weapons.** Each weapon effect gets a row in the expansions' table whose new columns play a copy tinted with
-  the weapon's color, so the same flame-type hook makes them yours only (light waves are bullets: the bullet hook
-  covers them). The energy blades themselves are a material of the weapon's model with fixed colors, shared by every
-  AC: your AC loads a copy of the weapon's model with a copy of that material, and the DLL sets that copy's colors
-  through the game's material repository. Details: [docs/weapon-vfx.md](docs/weapon-vfx.md).
-- **Color.** The DLL reads your color from the GENERATOR row and serves it to the flames as FXR external values, the
-  same way as [AC6-FXR-DLL-POC](https://github.com/lugia19/AC6-FXR-DLL-POC). Without the DLL, everything plays stock.
-  
-  The DLL does all the color math, and the flames only multiply by what it serves. That matters: an FXR can only take
-  one external value, run it through a curve and multiply it in, so anything that depends on the whole color (how
-  bright it is overall, which decides how much the subtracting copy darkens) can't be done inside the FXR. The DLL
-  works out the add, subtract and plain amounts once per color change, and the FXR just reads them.
+- **Paint rows.** The rows are list items the DLL adds to the list the game builds, shown by clips added to the Paint
+  movie, with panels built from the game's own menu pieces; a row keeps its values in a part of the AC's paint data the
+  game never uses. DEVICE's brightness reuses the game's own material menu.
+  [docs/paint-rows.md](docs/paint-rows.md)
+- **Flames and expansions.** The game picks thruster and expansion effects by the generator's color type; the DLL
+  answers with custom columns for your AC only, which play copies of the effects tinted with colors the DLL serves.
+  [docs/effects.md](docs/effects.md)
+- **Melee weapons.** Weapon effects go through the same columns; energy blades are a material of the weapon's model,
+  so your AC loads a copy of the model with its own material, whose colors the DLL sets.
+  [docs/weapon-vfx.md](docs/weapon-vfx.md)
+- **HUD.** Each sortie, the DLL hands the game a copy of the HUD movie with every color rewritten for the HUD row.
+  [docs/hud.md](docs/hud.md)
+- Without the DLL, everything plays stock.
 
 ## Build
 
