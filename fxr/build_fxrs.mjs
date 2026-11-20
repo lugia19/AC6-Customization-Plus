@@ -13,13 +13,15 @@
 // color to the thruster color (two more pairs of copies; the accent is a second set of external values), in a bundle at
 // the row's current flame + ALLMIND_BUNDLE_OFFSET.
 // Other effects (the core expansions') get the same copies, tinted by the expansion color instead, in a bundle at
-// S + BUNDLE_OFFSET, for every flame type.
+// S + BUNDLE_OFFSET, for every flame type. Melee weapons' effects get one copy each at S + WEAPON_OFFSET, tinted by
+// their weapon's color.
 // Usage: node build_fxrs.mjs <unpacked sfxbnd_commoneffects effect dir> <id map json out> <input json>
 //        <unpacked sfxbnd_m30 effect dir> [bundles dir]
 // (input: {flames: a list of [combustion, current, Coral] stock FXR IDs, others: a list of stock FXR IDs,
-// neutralModels: {model: the copies' version of it, whose material has no color of its own}})
+// weapons: a list of [first external value ID, stock FXR IDs], neutralModels: {model: the copies' version of it, whose
+// material has no color of its own}})
 // Writes the new FXRs into the effect dir, and a map {bundles: per flame row, its bundle per flame type (combustion,
-// current, Coral, ALLMIND), otherBundles: {stock id: bundle id}, resources: {new id: source id}} (each new FXR needs its
+// current, Coral, ALLMIND), otherBundles: {stock id: the bundle or copy its custom columns play}, resources: {new id: source id}} (each new FXR needs its
 // source's resource list; bundles only hold proxies).
 // With a bundles dir, only the bundles and the copies of the boss's effects are built, into it, overwriting, and no
 // map: for trying them in the running game with an FXR reloader.
@@ -52,6 +54,9 @@ const EXPANSION = { ext: 900021, offsets: [9100000, 9200000], byLuminance: true 
 // a thruster color copy, weighted so that the two (additive) add up to the fade.
 const FADING_ACCENT = { ext: 900012, offsets: [9300000, 9400000], accent: true }
 const FADING_MAIN = { ext: 900001, offsets: [9500000, 9600000], accent: false }
+// Melee weapons' effects (build.py WEAPON_EFFECTS): one copy each (no subtractive one), tinted by the weapon's own
+// color, which their replace rows play directly (listed in otherBundles).
+const WEAPON_OFFSET = 9700000
 // Game value: the spawner's termination signal.
 const EXT_TERMINATE = 0
 // Bundle IDs: a row's flame for a stock type + BUNDLE_OFFSET; its current flame + ALLMIND_BUNDLE_OFFSET for ALLMIND.
@@ -332,7 +337,7 @@ function makeContinuous(fxr) {
 }
 
 const [effectDir, idMapPath, inputPath, allmindDir, bundlesDir] = process.argv.slice(2)
-const { flames: rows, others, neutralModels } = JSON.parse(fs.readFileSync(inputPath, 'utf8'))
+const { flames: rows, others, weapons, neutralModels } = JSON.parse(fs.readFileSync(inputPath, 'utf8'))
 const fileName = id => `f${String(id).padStart(9, '0')}.fxr`
 const file = id => path.join(effectDir, fileName(id))
 // The boss's effects are in their own archive.
@@ -355,7 +360,14 @@ async function save(fxr) {
 // Every effect a flame type plays, as its kind of copy, and everything it references through proxies (same kind): one
 // job each, keyed by effect and kind, with how it fades.
 const jobs = new Map()
-const pending = [...rows.flatMap(rowFlames => flameTypes(rowFlames).flat()), ...others.map(sfx => [sfx, EXPANSION, null])]
+const pending = [
+  ...rows.flatMap(rowFlames => flameTypes(rowFlames).flat()),
+  ...others.map(sfx => [sfx, EXPANSION, null]),
+  ...weapons.flatMap(([ext, effects]) => {
+    const kind = { ext, offsets: [WEAPON_OFFSET] }
+    return effects.map(sfx => [sfx, kind, null])
+  }),
+]
 while (pending.length) {
   const [sfx, color, fade] = pending.pop()
   const key = `${sfx}:${color.offsets[0]}`
@@ -410,6 +422,9 @@ const otherBundles = {}
 for (const sfx of others) {
   otherBundles[sfx] = sfx + BUNDLE_OFFSET
   await save(bundle(sfx + BUNDLE_OFFSET, [[sfx, EXPANSION]]))
+}
+for (const [, effects] of weapons) {
+  for (const sfx of effects) otherBundles[sfx] = sfx + WEAPON_OFFSET
 }
 if (bundlesDir) {
   console.log(`${saved.size - Object.keys(resources).length} bundles and the boss's effects in ${bundlesDir}`)

@@ -27,16 +27,86 @@ PACKAGE = os.path.join(ROOT, "package")
 STOCK_COLOR_TYPES = (0, 1, 2)
 FIRST_CUSTOM_TYPE = 3
 CUSTOM_TYPES_STOCK = (0, 1, 2, 1)
-# GeneratorTypeSfxIdRplace_PC rows of the core expansions (assault armor, pulse armor, pulse protection...), recolored
-# (dll/src/thrusters.rs EXPANSION_EFFECTS mirrors it).
+# GeneratorTypeSfxIdRplace_PC rows with custom columns: the core expansions' (assault armor, pulse armor, pulse
+# protection...) and the melee weapons' (WEAPON_EFFECTS); dll/src/thrusters.rs EXPANSION_EFFECTS mirrors it.
 EXPANSION_ROWS = range(990000, 1000000)
 # Expansion models (RichModels) whose material has its own color (light blue, 83038 orange), which a tint can only
 # multiply: the copies use a neutral version, model and material renamed s8... -> s9... (s88232 -> s98232; same length,
 # so the model's material reference is patched in place), with the material's colors greyed to their luminance like
 # the expansion copies' own colors (fxr/build_fxrs.mjs recolor).
-TINTED_MATERIAL_MODELS = (83038, 88231, 88232, 88235)
+TINTED_MATERIAL_MODELS = (83038, 88231, 88232, 88235,
+                          83040, 83042, 83140, 83142,  # MOONLIGHT / REDSHIFT light waves
+                          88570, 88571)  # WLT 101's blade
 # Thruster effect rows that stay stock: the exhaust fumes (smoke only, no flame).
 STOCK_FLAME_ROWS = {410031}
+
+# WEAPON VFX (dll/src/weapons.rs): melee weapons by model (EquipParamWeapon equipModelId), each with the effects it plays
+# (type 96 events in its part's animations, its bullets' effects; effects that draw nothing left out). Each effect gets
+# a replace row whose custom columns play a copy tinted with the weapon's color (only the player's AC uses them).
+WEAPON_EFFECTS = {
+    211: [991000, 991001, 991002, 991005, 991006, 991010, 991011, 991012, 991015],  # pulse blade (991003-4: no file)
+    221: [991400, 991401, 991402, 991405, 991410, 991411, 991412, 991415],  # laser blade
+    230: [992100, 992101, 992102, 992105, 992110, 992111],  # WLT 101 (its blade is an effect)
+    241: [991200, 991201, 991202, 991203, 991204, 991205, 991206, 991207, 991211, 991212, 991215],  # laser dagger
+    250: [991905, 991906, 991907, 991910, 991915, 991916, 991917],  # MOONLIGHT
+    251: [992205, 992206, 992207, 992210, 992215, 992216, 992217],  # ML-REDSHIFT
+    411: [991500, 991501, 991502, 991505, 991506, 991507, 991510, 991511, 991512, 991515, 991516],  # laser slicer
+    610: [991300, 991301, 991302, 991305, 991307, 991308, 991309, 991310, 991311, 991312, 991315],  # laser lance
+    910: [991800, 991805, 991806, 991807, 991808, 991809, 991810, 991811, 991815, 991816, 991817],  # stun baton
+    1210: [991700, 991701, 991702, 991703, 991710, 991711, 991712, 991713, 991714, 991715],  # plasma thrower
+}
+# Weapons whose blade is a material of their part (fixed colors): the player's AC loads a copy of the part, model
+# 0xxx -> 9xxx (the DLL renames it as it loads; dll/src/weapons.rs WEAPONS lists the copies' materials), with copies
+# of its textures and of this material (P[WP_0...] -> P[WP_9...]), whose colors the DLL sets.
+WEAPON_BLADE_MATERIALS = {
+    211: "P[WP_0210]_Laser", 221: "P[WP_0220]_Laser", 241: "P[WP_0240]_Laser", 250: "P[WP_0250]_Laser",
+    251: "P[WP_0251]_Laser", 411: "P[WP_0410]_Laser", 610: "P[WP_0610]_Laser",
+}
+
+
+def player_copy(name):
+    """A weapon part / texture / material name -> its copy's (same length): the model number's leading 0 -> 9."""
+    copy = re.sub(r"(?i)(wp_(?:l_)?)0(\d{3})", r"\g<1>9\g<2>", name, count=1)
+    assert copy != name, f"no model number in {name}"
+    return copy
+
+
+def rename_in_file(path, renames):
+    """Same-length renames inside a binary file, as UTF-16."""
+    data = open(path, "rb").read()
+    for old, new in renames:
+        data = data.replace(old.encode("utf-16-le"), new.encode("utf-16-le"))
+    open(path, "wb").write(data)
+
+
+def copy_weapon_parts(game, work):
+    """Copies the weapon parts the player's AC loads instead (WEAPON_BLADE_MATERIALS; part + LOD), for unpacking."""
+    return [shutil.copy(os.path.join(game, "parts", f"wp_l_{model:04d}{suffix}.partsbnd.dcx"), work)
+            for model in WEAPON_BLADE_MATERIALS for suffix in ("", "_l")]
+
+
+def make_weapon_copies(game, work, parts, material_dir):
+    """The copies of the unpacked `parts`: their blade material references and file names renamed, the materials and
+    textures copied. Returns the part files the repack writes, and the texture copies."""
+    for model, material in WEAPON_BLADE_MATERIALS.items():
+        renames = [(material, player_copy(material))]
+        for part in [p for p in parts if os.path.basename(p).startswith(f"wp_l_{model:04d}")]:
+            folder = unpacked(part)
+            for flver in [f for f in os.listdir(folder) if f.lower().endswith(".flver")]:
+                rename_in_file(os.path.join(folder, flver), renames)
+            manifest = os.path.join(folder, "_witchy-bnd4.xml")
+            text = open(manifest, encoding="utf-8-sig").read()
+            name = os.path.basename(part)
+            assert f"<filename>{name}</filename>" in text, f"{manifest}: unexpected file name"
+            open(manifest, "w", encoding="utf-8-sig").write(text.replace(name, player_copy(name)))
+        # The material names itself once, in its source path.
+        copy = shutil.copy(os.path.join(material_dir, "Parts", material + ".matbin"),
+                           os.path.join(material_dir, "Parts", player_copy(material) + ".matbin"))
+        rename_in_file(copy, renames)
+    built = [os.path.join(work, player_copy(os.path.basename(p))) for p in parts]
+    textures = [shutil.copy(os.path.join(game, "parts", name), os.path.join(work, player_copy(name)))
+                for name in (f"wp_{model:04d}{suffix}.tpf.dcx" for model in WEAPON_BLADE_MATERIALS for suffix in ("", "_l"))]
+    return built, textures
 
 FIELD_SIZES = {'s8': 1, 'u8': 1, 'dummy8': 1, 's16': 2, 'u16': 2, 's32': 4, 'u32': 4, 'f32': 4, 'angle32': 4,
                'b32': 4, 'f64': 8, 'fixstr': 1, 'fixstrW': 2}
@@ -81,11 +151,7 @@ class Param:
 
         # The row table: row_count entries of 0x18 bytes from 0x40, each an s32 row ID, 4 bytes of padding and the u64
         # offset of the row's data.
-        row_count = struct.unpack_from("<H", self.data, 0xA)[0]
-        self.rows = {}  # row ID -> data offset
-        for i in range(row_count):
-            row_id, data_offset = struct.unpack_from("<i4xQ", self.data, 0x40 + i * 0x18)
-            self.rows[row_id] = data_offset
+        self.read_rows()
 
         # AC6 paramdefs can be stale: a def whose size doesn't match the rows would put fields at wrong offsets.
         starts = sorted(self.rows.values())
@@ -99,6 +165,37 @@ class Param:
     def set(self, row, field, value):
         offset, typ = self.fields[field]
         struct.pack_into(FIELD_FORMATS[typ], self.data, self.rows[row] + offset, value)
+
+    def read_rows(self):
+        # The row table: row_count entries of 0x18 bytes from 0x40, each an s32 row ID, 4 bytes of padding, the u64
+        # offset of the row's data and the u64 offset of its name.
+        count = struct.unpack_from("<H", self.data, 0xA)[0]
+        self.rows = dict(struct.unpack_from("<i4xQ", self.data, 0x40 + i * 0x18) for i in range(count))  # ID -> data
+
+    def add_rows(self, rows):
+        """Appends rows ({row ID: data bytes}) to the param: their entries after the row table, their data after the
+        last row's, every later offset shifted. Rows are unnamed (the stock rows' empty name)."""
+        old = self.data
+        count = len(self.rows)
+        table_end = 0x40 + count * 0x18
+        strings = struct.unpack_from("<I", old, 0)[0]  # the type name, then the row names: after all the data
+        entry_shift = len(rows) * 0x18
+        string_shift = entry_shift + sum(map(len, rows.values()))
+        table = bytearray(old[0x40:table_end])
+        for i in range(count):
+            data_offset, name_offset = struct.unpack_from("<QQ", table, i * 0x18 + 8)
+            struct.pack_into("<QQ", table, i * 0x18 + 8, data_offset + entry_shift, name_offset + string_shift)
+        empty_name = struct.unpack_from("<Q", table, 0x10)[0]
+        at = strings + entry_shift
+        for row_id, data in rows.items():
+            table += struct.pack("<i4xQQ", row_id, at, empty_name)
+            at += len(data)
+        self.data = bytearray(old[:0x40] + table + old[table_end:strings] + b"".join(rows.values()) + old[strings:])
+        struct.pack_into("<I", self.data, 0, strings + string_shift)
+        struct.pack_into("<H", self.data, 0xA, count + len(rows))
+        struct.pack_into("<Q", self.data, 0x10, struct.unpack_from("<Q", old, 0x10)[0] + string_shift)  # type name
+        struct.pack_into("<Q", self.data, 0x30, struct.unpack_from("<Q", old, 0x30)[0] + entry_shift)  # data start
+        self.read_rows()
 
     def save(self):
         open(self.path, "wb").write(self.data)
@@ -183,7 +280,9 @@ def main():
     archives = [regulation, effects, materials]
     # Only read: ALLMIND's thruster effects, for the ALLMIND flame type's extras (fxr/build_fxrs.mjs).
     allmind = shutil.copy(os.path.join(args.game, "sfx", "sfxbnd_m30.ffxbnd.dcx"), WORK)
-    witchy([*archives, allmind], [unpacked(a) for a in [*archives, allmind]])
+    # The player's weapon part copies (make_weapon_copies), unpacked and repacked with the archives.
+    weapon_parts = copy_weapon_parts(args.game, WORK)
+    witchy([*archives, allmind, *weapon_parts], [unpacked(a) for a in [*archives, allmind, *weapon_parts]])
 
     params = unpacked(regulation)
     # The generator-dependent effect tables: row = an effect the game spawns, column t (sfxId<t>) = what it uses for
@@ -224,8 +323,18 @@ def main():
     id_map_path = os.path.join(WORK, "id_map.json")
     input_path = os.path.join(WORK, "fxr_input.json")
     neutral_models = make_neutral_models(os.path.join(unpacked(effects), "model"), unpacked(materials), witchy)
-    json.dump({"flames": list(flame_rows.values()), "others": expansion_effects, "neutralModels": neutral_models},
-              open(input_path, "w"))
+    built_parts, weapon_textures = make_weapon_copies(args.game, WORK, weapon_parts, unpacked(materials))
+    # The DLL serves a weapon's color on nine external values from EXT_BASE + 10 * its model, and lists the
+    # weapons and their blade materials' copies itself.
+    weapons_rs = open(os.path.join(ROOT, "dll", "src", "weapons.rs")).read()
+    ext_base = int(re.search(r"const EXT_BASE: i32 = (\d+);", weapons_rs).group(1))
+    for model in WEAPON_EFFECTS:
+        material = WEAPON_BLADE_MATERIALS.get(model)
+        listed = f"model: {model}," in weapons_rs and (not material or f'b"{player_copy(material)}\\0"' in weapons_rs)
+        assert listed, f"weapons.rs doesn't list weapon {model} (or its blade material) as build.py does"
+    weapon_inputs = [[ext_base + 10 * model, effects_of_weapon] for model, effects_of_weapon in WEAPON_EFFECTS.items()]
+    json.dump({"flames": list(flame_rows.values()), "others": expansion_effects, "weapons": weapon_inputs,
+               "neutralModels": neutral_models}, open(input_path, "w"))
     subprocess.run(["node", "build_fxrs.mjs", effect_dir, id_map_path, input_path,
                     os.path.join(unpacked(allmind), "effect")], cwd=fxr_dir,
                    check=True, shell=shell)
@@ -247,6 +356,12 @@ def main():
             resource_list = resource_list.replace(f"s{model}.sib".encode(), f"s{neutral}.sib".encode())
         open(target, "wb").write(resource_list)
 
+    # The weapons' effects get rows (stock), whose custom columns the loop below fills with their tinted copies.
+    for sfx in [sfx for effects_of_weapon in WEAPON_EFFECTS.values() for sfx in effects_of_weapon]:
+        assert sfx not in replace.rows, f"replace row {sfx} exists"
+    replace.add_rows({sfx: struct.pack("<8i", *[sfx] * FIRST_CUSTOM_TYPE, *[-1] * (8 - FIRST_CUSTOM_TYPE))
+                      for effects_of_weapon in WEAPON_EFFECTS.values() for sfx in effects_of_weapon})
+
     # Params: the custom types' columns, a flame row's bundles in the thruster table, what the matching stock type uses
     # everywhere else (e.g. a Coral flame type gets the Coral expansion effects), as its bundle if it has one.
     for table, bundles in [(thrusters, bundles_of), (replace, {})]:
@@ -264,7 +379,7 @@ def main():
     labels = re.search(r"const FLAME_TYPES: \[&str; (\d+)\]", open(os.path.join(ROOT, "dll", "src", "thrusters.rs")).read())
     assert int(labels.group(1)) == flame_types, f"thrusters.rs names {labels.group(1)} flame types, the params have {flame_types}"
 
-    witchy([unpacked(a) for a in archives], archives)
+    witchy([unpacked(a) for a in [*archives, *weapon_parts]], [*archives, *built_parts])
 
     assert cargo.wait() == 0, "cargo build failed"
 
@@ -279,6 +394,9 @@ def main():
     shutil.copy(effects, os.path.join(PACKAGE, "mod", "sfx"))
     os.makedirs(os.path.join(PACKAGE, "mod", "material"))
     shutil.copy(materials, os.path.join(PACKAGE, "mod", "material"))
+    os.makedirs(os.path.join(PACKAGE, "mod", "parts"))
+    for part in [*built_parts, *weapon_textures]:
+        shutil.copy(part, os.path.join(PACKAGE, "mod", "parts"))
     # The HUD movie with the table of its colors, for the HUD rows (dll/src/hud_movie.rs).
     subprocess.run([sys.executable, os.path.join(ROOT, "tools", "prepare_hud.py"),
                     os.path.join(args.game, "menu", "01_000_fe.gfx"),

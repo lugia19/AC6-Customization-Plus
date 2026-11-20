@@ -7,6 +7,7 @@ More to customize in Armored Core VI's Paint screen (1.09.1), saved with each AC
 - **Expansion color** for Assault Armor, Pulse Armor, Pulse Protection and Terminal Armor.
 - **HUD color, warning color and opacity** for the in-mission HUD.
 - **Light brightness**, a setting the game has but hides.
+- **Melee weapon colors** (in progress, no menu yet): each melee weapon in a color of its own, blade and effects.
 
 ## Use
 
@@ -47,6 +48,14 @@ picked before isn't carried over.
 
 Everything is stored in the AC's paint data, so it's saved with the AC and carried by designs.
 
+**Melee weapon colors** don't have their row yet: for now they're set in `customization_plus_weapons.txt` next to
+`customization_plus.dll` (written on first launch, listing every weapon). One line per weapon model, e.g.
+`221 = FF00FF` makes the Vvc-770LB laser blade magenta; the game picks up a saved change on the next swing. Covered:
+the energy blades (pulse blade, laser blade, WLT 101, laser dagger, MOONLIGHT, ML-REDSHIFT, laser slicer, laser
+lance: blade and effects, light waves included) and the stun baton and plasma thrower (effects). Only your AC changes;
+enemies with the same weapon keep the stock look. A weapon without a color keeps its stock blade, and its effects get a
+color close to its stock one. These colors are one per weapon for every AC, not saved with the AC.
+
 Coming from 0.1.0 (AC6-Thruster-Customization)? The save file has a new name: rename `PaintMenu.sl2` to
 `CustomizationPlus.sl2` in your save folder to keep what you did there.
 
@@ -59,6 +68,7 @@ Coming from 0.1.0 (AC6-Thruster-Customization)? The save file has a new name: re
 - The new rows' labels and choices are in English in every language.
 - The package replaces whole game files (`regulation.bin`, the common effects, the material archive, two menu
   movies), so it doesn't combine with other mods that replace the same ones.
+- The assembly preview shows the stock blades (it's a separate model, not your AC).
 
 ## How it works
 
@@ -102,6 +112,11 @@ Coming from 0.1.0 (AC6-Thruster-Customization)? The save file has a new name: re
   colors (the stagger bar's orange and red, reload and overheat, low AP, boss HP green, condition gauge
   purple...): their hue is rotated, and their saturation and brightness scaled, by what takes pure red to the
   warning color.
+- **Melee weapons.** Each weapon effect gets a row in the expansions' table whose new columns play a copy tinted with
+  the weapon's color, so the same flame-type hook makes them yours only (light waves are bullets: the bullet hook
+  covers them). The energy blades themselves are a material of the weapon's model with fixed colors, shared by every
+  AC: your AC loads a copy of the weapon's model with a copy of that material, and the DLL sets that copy's colors
+  through the game's material repository. Details: [docs/weapon-vfx.md](docs/weapon-vfx.md).
 - **Color.** The DLL reads your color from the GENERATOR row and serves it to the flames as FXR external values, the
   same way as [AC6-FXR-DLL-POC](https://github.com/lugia19/AC6-FXR-DLL-POC). Without the DLL, everything plays stock.
   

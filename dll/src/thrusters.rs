@@ -25,7 +25,7 @@ use crate::{Hook, log, orig};
 // The first channel of each color: the thruster color, the accent color, the expansion color.
 const EXT_FIRST_CHANNELS: [i32; COLORS] = [900001, 900012, 900021];
 const COLORS: usize = 3;
-const CHANNEL_COUNT: usize = 9;
+pub(crate) const CHANNEL_COUNT: usize = 9;
 // The row's choices: the generator's own type, then the custom types from FIRST_CUSTOM_TYPE on.
 const FLAME_TYPES: [&str; 5] = ["Generator's own", "Combustion", "Current", "Coral", "ALLMIND"];
 const FIRST_CUSTOM_TYPE: i32 = 3;
@@ -36,14 +36,13 @@ const DEFAULT_COLOR: u32 = 0xFFFFFF;
 const DEFAULT_ACCENT: u32 = 0x80FFD4;
 const DEFAULT_EXPANSION_COLOR: u32 = 0xFFFFFF;
 
-const WORLD_CHR_MAN_ADDR: usize = 0x144e0f598;
-const PLAYER_INS_OFFSET: usize = 0xA5A0;
 // ChrIns: its handle; [[+ 0x320]] is what color_type takes.
 const CHR_HANDLE_OFFSET: usize = 8;
 const CHR_MODULES_OFFSET: usize = 0x320;
 // The bullet's owner, as a character handle.
 const BULLET_OWNER_OFFSET: usize = 0xce0;
-// The core expansions' effects (build.py EXPANSION_ROWS): the only bullet effects with a column per flame type.
+// The replace table rows with custom columns (build.py EXPANSION_ROWS): the core expansions' and the melee weapons'
+// effects (light waves are bullets).
 const EXPANSION_EFFECTS: std::ops::Range<i32> = 990_000..1_000_000;
 // `int replace(color_type, sfx)`: the effect's GeneratorTypeSfxIdRplace_PC column for the type.
 const REPLACE_ADDR: usize = 0x1415ce050;
@@ -77,7 +76,7 @@ type ColorTypeFn = unsafe extern "system" fn(usize) -> i32;
 
 unsafe extern "system" fn color_type_impl(chr_module: usize) -> i32 {
     let stock = unsafe { orig::<ColorTypeFn>(&ORIG_COLOR_TYPE)(chr_module) };
-    if stock < 0 || player().is_none_or(|player| crate::read::<usize>(chr_module + 8) != Some(player)) {
+    if stock < 0 || crate::player().is_none_or(|player| crate::read::<usize>(chr_module + 8) != Some(player)) {
         return stock;
     }
     players_column(stock)
@@ -93,14 +92,15 @@ fn players_column(stock: i32) -> i32 {
 }
 
 /// Bullets spawn their effects by plain ID (Bullet param), not through the generator tables: for the player's bullets,
-/// an expansion effect goes through GeneratorTypeSfxIdRplace_PC with the player's column (assault armor's blast).
+/// an effect with custom columns goes through GeneratorTypeSfxIdRplace_PC with the player's column (assault armor's
+/// blast, light waves).
 unsafe extern "system" fn bullet_effect_impl(bullet: usize, out: usize, sfx: i32, pos: usize, rot: usize) -> usize {
     let sfx = if EXPANSION_EFFECTS.contains(&sfx) { players_bullet_effect(bullet, sfx).unwrap_or(sfx) } else { sfx };
     unsafe { orig::<BulletEffectFn>(&ORIG_BULLET_EFFECT)(bullet, out, sfx, pos, rot) }
 }
 
 fn players_bullet_effect(bullet: usize, sfx: i32) -> Option<i32> {
-    let player = player()?;
+    let player = crate::player()?;
     if crate::read::<u64>(bullet + BULLET_OWNER_OFFSET)? != crate::read::<u64>(player + CHR_HANDLE_OFFSET)? {
         return None;
     }
@@ -108,12 +108,6 @@ fn players_bullet_effect(bullet: usize, sfx: i32) -> Option<i32> {
     let stock = unsafe { orig::<ColorTypeFn>(&ORIG_COLOR_TYPE)(module) };
     let replace: ReplaceFn = unsafe { std::mem::transmute(REPLACE_ADDR) };
     Some(unsafe { replace(players_column(stock), sfx) }).filter(|&id| id >= 0)
-}
-
-/// The player's ChrIns (none while loading).
-fn player() -> Option<usize> {
-    let world_chr_man = crate::read::<usize>(WORLD_CHR_MAN_ADDR).filter(|&p| p != 0)?;
-    crate::read::<usize>(world_chr_man + PLAYER_INS_OFFSET).filter(|&p| p != 0)
 }
 
 /// Called for every external value read of every effect. Our IDs don't need the game's lookup at all (nothing else
@@ -128,9 +122,10 @@ unsafe extern "system" fn get_ext_value_impl(block: *mut u8, out: *mut u32, id: 
     }
 }
 
-/// The value we serve for an external value ID, as f32 bits, if it's one of ours.
+/// The value we serve for an external value ID, as f32 bits, if it's one of ours (a weapon's: weapons.rs).
 fn served(id: i32) -> Option<&'static AtomicU32> {
     EXT_FIRST_CHANNELS.iter().zip(&CHANNELS).find_map(|(&first, channels)| channels.get(usize::try_from(id - first).ok()?))
+        .or_else(|| crate::weapons::served(id))
 }
 
 /// sRGB (what the color picker shows) to linear light.
@@ -145,7 +140,13 @@ fn brightness(brightest: f32) -> f32 {
     t * t * (3.0 - 2.0 * t) // smoothstep
 }
 
-/// Serves a 0xRRGGBB color as color `which` (0 thruster, 1 accent, 2 expansion): for each channel c (0-1),
+/// 0xRRGGBB as red, green, blue (0-1).
+pub(crate) fn channels(rgb: u32) -> [f32; 3] {
+    [16, 8, 0].map(|shift| (rgb >> shift & 0xFF) as f32 / 255.0)
+}
+
+/// Serves a 0xRRGGBB color on nine external values (`served`; thruster, accent, expansion, a weapon's): for each
+/// channel c (0-1),
 /// - add (first three): c for bright colors (what looked right in game); for dark ones its linear intensity, since the
 ///   flames multiply it into HDR colors up to ~50 (#050505 at 0.02 would still leave those above 1: white);
 /// - remove (next three): what the color lacks (1 - c), for dark colors only (additive flames can't get darker than
@@ -153,20 +154,17 @@ fn brightness(brightest: f32) -> f32 {
 /// - plain (last three): c.
 ///
 /// Each is served as 1 + the value.
-fn set_channels(which: usize, rgb: u32) {
-    let channels = &CHANNELS[which];
-    let red = (rgb >> 16 & 0xFF) as f32 / 255.0;
-    let green = (rgb >> 8 & 0xFF) as f32 / 255.0;
-    let blue = (rgb & 0xFF) as f32 / 255.0;
-    let bright = brightness(red.max(green).max(blue));
-    for (i, c) in [red, green, blue].into_iter().enumerate() {
+pub(crate) fn set_channels(served: &[AtomicU32; CHANNEL_COUNT], rgb: u32) {
+    let rgb = channels(rgb);
+    let bright = brightness(rgb.iter().copied().fold(0.0, f32::max));
+    for (i, c) in rgb.into_iter().enumerate() {
         let linear = srgb_to_linear(c);
         let add = linear + (c - linear) * bright;
         let remove = (1.0 - c) * (1.0 - bright);
         let plain = c;
-        channels[i].store((1.0 + add).to_bits(), Ordering::Relaxed);
-        channels[3 + i].store((1.0 + remove).to_bits(), Ordering::Relaxed);
-        channels[6 + i].store((1.0 + plain).to_bits(), Ordering::Relaxed);
+        served[i].store((1.0 + add).to_bits(), Ordering::Relaxed);
+        served[3 + i].store((1.0 + remove).to_bits(), Ordering::Relaxed);
+        served[6 + i].store((1.0 + plain).to_bits(), Ordering::Relaxed);
     }
 }
 
@@ -183,7 +181,7 @@ fn poll_loop() {
         for (which, last) in last.iter_mut().enumerate() {
             let Some(rgb) = rows::color(ROW_THRUSTER, which).filter(|rgb| *last != Some(*rgb)) else { continue };
             *last = Some(rgb);
-            set_channels(which, rgb);
+            set_channels(&CHANNELS[which], rgb);
             log(&format!("thrusters: {} #{rgb:06X}", ["flames", "accent", "expansions"][which]));
         }
     }
@@ -196,8 +194,8 @@ pub(crate) fn claim_row() {
 }
 
 pub(crate) fn start() {
-    set_channels(0, DEFAULT_COLOR);
-    set_channels(1, DEFAULT_ACCENT);
-    set_channels(2, DEFAULT_EXPANSION_COLOR);
+    set_channels(&CHANNELS[0], DEFAULT_COLOR);
+    set_channels(&CHANNELS[1], DEFAULT_ACCENT);
+    set_channels(&CHANNELS[2], DEFAULT_EXPANSION_COLOR);
     std::thread::spawn(poll_loop);
 }
