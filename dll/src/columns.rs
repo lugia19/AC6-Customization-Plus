@@ -31,7 +31,8 @@ static ORIG_BULLET_EFFECT: AtomicUsize = AtomicUsize::new(0);
 static ORIG_MUZZLE_FLASH: AtomicUsize = AtomicUsize::new(0);
 
 // `muzzle_flash(fire_module, info)`: the shooter's ChrIns at fire_module + 8; info holds the bullet's muzzleFlashSfxId
-// (+ 8) and muzzleFlashSfxId_2 (+ 0x10). Gun fire passes the same info for each dummy poly: edited in a copy.
+// (+ 8) and muzzleFlashSfxId_2 (+ 0x10). Gun fire passes the same info for each dummy poly: edited in a copy. Its size:
+// both callers (0x1408eeec0, 0x1408f0de0) build it in 0x60 bytes of locals, and the spawn reads up to + 0x5c.
 const FIRE_MODULE_CHR_OFFSET: usize = 8;
 const SHOT_MUZZLE_FLASH_OFFSETS: [usize; 2] = [8, 0x10];
 #[repr(C, align(8))]
