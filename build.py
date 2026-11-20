@@ -34,7 +34,7 @@ STOCK_COLOR_TYPES = (0, 1, 2)
 FIRST_CUSTOM_TYPE = 3
 CUSTOM_TYPES_STOCK = (0, 1, 2, 1)
 # GeneratorTypeSfxIdRplace_PC rows with custom columns: the core expansions' (assault armor, pulse armor, pulse
-# protection...) and the melee weapons' (tools/weapons.py WEAPON_EFFECTS); dll/src/columns.rs CUSTOM_COLUMN_EFFECTS mirrors it.
+# protection...) and the melee weapons' (tools/weapons.py); dll/src/columns.rs CUSTOM_COLUMN_EFFECTS mirrors it.
 EXPANSION_ROWS = range(990000, 1000000)
 # Thruster effect rows that stay stock: the exhaust fumes (smoke only, no flame).
 STOCK_FLAME_ROWS = {410031}
@@ -47,11 +47,6 @@ def main():
     args = parser.parse_args()
     defs = os.path.join(os.path.dirname(args.witchy), "Assets", "Paramdex", "AC6", "Defs")
 
-    # The DLL doesn't depend on anything below: build it meanwhile.
-    cargo = subprocess.Popen(["cargo", "+stable", "build", "--release"], cwd=os.path.join(ROOT, "dll"))
-    # If a later step fails, don't leave it compiling (and holding the target dir) after the build exits.
-    atexit.register(lambda: cargo.poll() is None and cargo.kill())
-
     witchy = Witchy(args.witchy)
 
     shutil.rmtree(WORK, ignore_errors=True)
@@ -62,11 +57,29 @@ def main():
     archives = [regulation, effects, materials]
     # Only read: ALLMIND's thruster effects, for the ALLMIND flame type's extras (fxr/build_fxrs.mjs).
     allmind = shutil.copy(os.path.join(args.game, "sfx", "sfxbnd_m30.ffxbnd.dcx"), WORK)
-    # The player's weapon part copies (tools/weapons.py), unpacked and repacked with the archives.
-    weapon_parts = weapons.copy_weapon_parts(args.game, WORK)
-    witchy([*archives, allmind, *weapon_parts], [unpacked(a) for a in [*archives, allmind, *weapon_parts]])
+    witchy([*archives, allmind], [unpacked(a) for a in [*archives, allmind]])
 
     params = unpacked(regulation)
+    # The melee weapons (tools/weapons.py): their parts (the player's copies are repacked with the archives, the others
+    # only read), their animations and colored materials, what the data says they play, and the DLL's table of them.
+    weapon_models = weapons.models(params, defs)
+    weapon_parts, read_parts = weapons.copy_weapon_parts(args.game, WORK, weapon_models)
+    witchy([*weapon_parts, *read_parts], [unpacked(p) for p in [*weapon_parts, *read_parts]])
+    anibnds = weapons.animation_bundles([*weapon_parts, *read_parts])
+    matbins = weapons.material_files(os.path.join(unpacked(materials)))
+    witchy([*anibnds, *matbins], [*map(unpacked, anibnds), *[m + ".xml" for m in matbins]])
+    weapon_data = weapons.derive(params, defs, os.path.join(unpacked(effects), "effect"), weapon_models, anibnds)
+    weapons.report(weapon_models, weapon_data)
+    table = weapons.rust_table(weapon_models, weapon_data, weapons.material_colors(unpacked(materials)))
+    table_path = os.path.join(ROOT, "dll", "src", "weapon_table.rs")
+    if not os.path.exists(table_path) or open(table_path).read() != table:
+        open(table_path, "w", newline="\n").write(table)
+        print(f"Updated {table_path}")
+
+    # The DLL doesn't depend on anything below: build it meanwhile.
+    cargo = subprocess.Popen(["cargo", "+stable", "build", "--release"], cwd=os.path.join(ROOT, "dll"))
+    # If a later step fails, don't leave it compiling (and holding the target dir) after the build exits.
+    atexit.register(lambda: cargo.poll() is None and cargo.kill())
     # The generator-dependent effect tables: row = an effect the game spawns, column t (sfxId<t>) = what it uses for
     # generator color type t, -1 = the row's own effect (e.g. row 1003010, the assault boost startup flare, has no
     # columns: one flare for every type). Thrusters: the flames, which get custom bundles. Replace (no paramdef, 8 s32
@@ -105,8 +118,9 @@ def main():
     id_map_path = os.path.join(WORK, "id_map.json")
     input_path = os.path.join(WORK, "fxr_input.json")
     neutral_models = make_neutral_models(os.path.join(unpacked(effects), "model"), unpacked(materials), witchy)
-    built_parts, weapon_textures = weapons.make_weapon_copies(args.game, WORK, weapon_parts, unpacked(materials))
-    weapon_inputs, hit_inputs = weapons.fxr_inputs(os.path.join(ROOT, "dll", "src"))
+    built_parts, weapon_textures = weapons.make_weapon_copies(args.game, WORK, weapon_parts, weapon_models,
+                                                              unpacked(materials))
+    weapon_inputs, hit_inputs = weapons.fxr_inputs(weapon_models, weapon_data)
     json.dump({"flames": list(flame_rows.values()), "others": expansion_effects, "weapons": weapon_inputs,
                "hits": hit_inputs, "neutralModels": neutral_models}, open(input_path, "w"))
     subprocess.run(["node", "build_fxrs.mjs", effect_dir, id_map_path, input_path,
@@ -131,10 +145,12 @@ def main():
         open(target, "wb").write(resource_list)
 
     # The weapons' effects get rows (stock), whose custom columns the loop below fills with their tinted copies.
-    for sfx in [sfx for effects_of_weapon in weapons.WEAPON_EFFECTS.values() for sfx in effects_of_weapon]:
+    weapon_rows = weapons.effect_rows(weapon_data)
+    assert len(set(weapon_rows)) == len(weapon_rows), "an effect is played by two weapons (it has one color)"
+    for sfx in weapon_rows:
         assert sfx not in replace.rows, f"replace row {sfx} exists"
     replace.add_rows({sfx: struct.pack("<8i", *[sfx] * FIRST_CUSTOM_TYPE, *[-1] * (8 - FIRST_CUSTOM_TYPE))
-                      for effects_of_weapon in weapons.WEAPON_EFFECTS.values() for sfx in effects_of_weapon})
+                      for sfx in weapon_rows})
 
     # Params: the custom types' columns, a flame row's bundles in the thruster table, what the matching stock type uses
     # everywhere else (e.g. a Coral flame type gets the Coral expansion effects), as its bundle if it has one.

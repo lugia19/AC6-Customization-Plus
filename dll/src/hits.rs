@@ -13,9 +13,6 @@ use std::sync::atomic::AtomicUsize;
 use crate::game;
 use crate::{Hook, orig, weapons};
 
-// The copies' IDs (tools/weapons.py): stock + model * MODEL_STRIDE + BUNDLE_OFFSET.
-const MODEL_STRIDE: i32 = 100000;
-const BUNDLE_OFFSET: i32 = 60000;
 // The hit: its attacker (a character or a bullet), the BehaviorParam ID that launched it (100,000,000 + variation *
 // 1000 + n for the player's), its bullet's ID (variation * 1000 + n; the stun baton's bullets have no behavior).
 const DMG_ATTACKER_OFFSET: usize = 0x1e8;
@@ -94,8 +91,8 @@ fn swap(list: usize, variation: i32) -> Option<()> {
     let end = game::read::<usize>(list + LIST_END_OFFSET)?;
     for entry in (begin..end).step_by(ENTRY_SIZE) {
         let sfx = game::read::<i32>(entry)?;
-        if let Some(model) = weapons::hit_copy_model(variation, sfx) {
-            unsafe { *(entry as *mut i32) = sfx + i32::from(model) * MODEL_STRIDE + BUNDLE_OFFSET };
+        if let Some(copy) = weapons::hit_copy(variation, sfx) {
+            unsafe { *(entry as *mut i32) = copy };
         }
     }
     Some(())

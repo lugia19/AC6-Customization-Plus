@@ -31,8 +31,7 @@ The regulation fills columns 3-6, one per flame type: 3 combustion, 4 current, 5
   stock).
 - **Replace table:** each row gets what the matching stock type uses (ALLMIND: current's), as its tinted copy if it
   has one: so a Coral flame type also gets the Coral expansion effects, recolored.
-- **Weapon rows:** the build adds a replace row for each melee weapon effect (`tools/weapons.py` WEAPON_EFFECTS; stock
-  in columns 0-2), whose columns 3-6 all play the weapon's tinted bundle: a weapon's look doesn't depend on the flame
+- **Weapon rows:** the build adds a replace row for each melee weapon effect (below; stock in columns 0-2), whose columns 3-6 all play the weapon's tinted bundle: a weapon's look doesn't depend on the flame
   type.
 
 The hook on `0x140829de0` returns a custom column for the player's character and the stock type for everyone else.
@@ -51,9 +50,16 @@ IDs go through the replace table the same way, in a copy of `info` (gun fire reu
 
 ## Melee weapons' effects
 
-What a melee weapon's animations play: per blade weapon a glow
-billboard + light (x00 / x10), a trail (x01 / x11), sparks (x02 / x12) and the slash arcs (x05 / x15), each in one
-hue per weapon. Each listed effect gets a tinted copy:
+The build reads them from the game's data (`tools/weapons.py` derive), for each weapon in its `WEAPONS` list:
+
+- **Animations:** every TAE event 96 in the weapon part's animations (`wp_l_<model>.partsbnd.dcx`, its anibnd).
+- **Bullets:** the effect fields (`sfxId_Bullet`, `sfxId_Hit`, `muzzleFlashSfxId`...) of every bullet its behaviors
+  fire (BehaviorParam_PC rows of its behaviorVariationId), and of the bullets those fire.
+- Effects without a file are skipped; a weapon's `stock` list leaves effects stock on purpose; an effect outside
+  990000-999999 (what the DLL can give columns) stops the build.
+
+Per blade weapon that's a glow billboard + light (x00 / x10), a trail (x01 / x11), sparks (x02 / x12) and the slash
+arcs (x05 / x15), each in one hue per weapon. As of 1.09.1:
 
 | Weapon | Model | Effects | Notes |
 |---|---|---|---|
@@ -65,8 +71,8 @@ hue per weapon. Each listed effect gets a tinted copy:
 | IA-C01W7: ML-REDSHIFT | 251 | 992205-207, 992210, 992215-217 | light waves are bullets |
 | Vvc-774LS laser slicer | 411 | 991500-502, 991505-507, 991510-512, 991515-516 | |
 | VE-67LLA laser lance | 610 | 991300-302, 991305, 991307-308, 991310-312, 991315 | 991307 / 991308 are its thrusters (proxies to 411000 / 411010), tinted with the lance; 991309 (its exhaust, built like the AC's 410031) stays stock |
-| VP-67EB stun baton | 910 | 991800, 991805-811, 991815-817 | effects only |
-| HMMR | 1210 | 991700-703, 991710-715 | effects only |
+| VP-67EB stun baton | 910 | 991800-802, 991805-812, 991815-817 | effects only (991801 / 802 / 812 draw nothing) |
+| 44-143 HMMR | 1210 | 991710-715 | effects only (991700-703 are the explosive thrower's) |
 
 Left out: the chainsaw and pile bunker (physical sparks), grey smoke effects (991606, 992012).
 
@@ -87,7 +93,8 @@ the list builder then swaps each effect that weapon has a copy of for the copy's
 - **The weapon:** dmg + 0x64, the BehaviorParam ID that launched the attack, is 100,000,000 + variation × 1000 + n for
   the player's; the stun baton's bullets have none, so their bullet ID (dmg + 0x150) / 1000. The variation is
   EquipParamWeapon behaviorVariationId (melee weapons 20000-20999). Ranged weapons and anyone else's hits stay stock.
-- **The effects** (`tools/weapons.py` WEAPON_HIT_EFFECTS): 250006 laser weapons, 260006 pulse blade, 265006/265007
+- **The effects** (derived by the build: the weapon's attacks and bullets, by material, type and size, on the terrain
+  and AC body concepts 10 and 103; physical (Iron) hits are metal sparks and stay stock): 250006 laser weapons, 260006 pulse blade, 265006/265007
   WLT 101 and ML-REDSHIFT, 273006/273007 MOONLIGHT (and the slicer's and dagger's Energy_Green attacks), 255000/255005/
   255006 HMMR, 257006 stun baton. Left stock: criticals (they come from the target, by another path), terrain debris,
   shield and Pulse Armor ripples (the target's color), and the HMMR's scorch decal (decals are their own system).

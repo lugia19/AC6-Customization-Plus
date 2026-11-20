@@ -22,14 +22,15 @@ Some melee weapons' colors are materials of the weapon's model, with fixed color
 
 | Weapon | Material | Colors |
 |---|---|---|
-| the energy blades (211, 221, 241, 250, 251, 411, 610) | `P[WP_xxx0]_Laser` (shader `P[LaserBlade]_001`): the blade | `color_6`, `_8`, `_10`, `_12`, `_13` |
+| the energy blades (211, 221, 241, 250, 251, 411, 610) | `P[WP_xxx0]_Laser` (shader `P[LaserBlade]_001`): the blade | `color_6`, `_8`, `_10`, `_12`, `_13` (some `_15`) |
 | WLT 101 (230) | `P[WP_0230]_LB_Emissive_Glow` (`P[Laser]_Emissive_Glow`): the red glow | `color_0`, `_2`, `_4`, `_6` |
 | HMMR (1210) | `P[WP_1210]_Plasmawire` (`P[ACParts][Plasma_spinner]_Emissive_Glow`): the chain | `color_0`, `_3` |
 
 Materials are shared by every model that uses them, and changing one recolors it on every AC: global. So the player's
 AC loads its own copy of the part, with its own materials.
 
-**The copies** (build, `WEAPON_MATERIALS`): the part (`wp_l_0221.partsbnd.dcx` and its `_l` LOD) is copied with the
+**The copies** (build: a weapon's `materials` in `tools/weapons.py`; their color parameters, every Float4 / Float5
+named color, are read from the matbins): the part (`wp_l_0221.partsbnd.dcx` and its `_l` LOD) is copied with the
 model number's leading digit d -> 9 - d (`wp_l_9221`, HMMR `wp_l_8210`; no stock part uses 8000-8949 or 9014-9999),
 stock except its file name and those materials' references (`P[WP_9220]_Laser`). Its textures are copied too
 (`wp_9221.tpf.dcx` + `_l`): the game loads them by number, and without them the body renders unpainted. The materials

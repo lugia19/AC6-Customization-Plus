@@ -6,7 +6,7 @@ import xml.etree.ElementTree as ET
 
 FIELD_SIZES = {'s8': 1, 'u8': 1, 'dummy8': 1, 's16': 2, 'u16': 2, 's32': 4, 'u32': 4, 'f32': 4, 'angle32': 4,
                'b32': 4, 'f64': 8, 'fixstr': 1, 'fixstrW': 2}
-FIELD_FORMATS = {'s8': '<b', 's32': '<i'}
+FIELD_FORMATS = {'s8': '<b', 'u8': '<B', 's16': '<h', 'u16': '<H', 's32': '<i', 'u32': '<I'}
 
 
 class Param:

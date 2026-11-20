@@ -67,10 +67,29 @@ profile turns it off (`disable_arxan`).
 | `regulation.bin` | the game's | custom columns 3-6 of the two effect tables; replace rows for the weapons' effects (`tools/params.py`) |
 | `sfx/sfxbnd_commoneffects.ffxbnd.dcx` | the game's (and ALLMIND's effects from `sfxbnd_m30`) | tinted copies and bundles; neutral model copies (`fxr/build_fxrs.mjs`, `tools/models.py`) |
 | `material/allmaterial.matbinbnd.dcx` | the game's | neutral materials for those models; the weapons' blade material copies (`tools/models.py`, `tools/weapons.py`) |
-| `parts/wp_l_9xxx*.partsbnd.dcx`, `wp_9xxx*.tpf.dcx` | the energy blade weapons' parts and textures | the player's copies (`tools/weapons.py`) |
+| `parts/wp_l_9xxx*.partsbnd.dcx`, `wp_9xxx*.tpf.dcx` | the parts and textures of the weapons with colored materials | the player's copies (`tools/weapons.py`) |
 | `menu/02_coloring.gfx` | the Paint movie | the extra rows' clips, their panel, the tall list (`tools/build_gfx.py`) |
 | `menu/01_000_fe.gfx` | the HUD movie | neutral transforms, a table of its colors (`tools/prepare_hud.py`) |
 | `customization_plus.dll`, `customization-plus.me3` | `dll/`, the repo | |
 
-The DLL and the build share some tables (flame type labels, weapon list, external value IDs); the build checks they
-agree.
+The DLL and the build share some tables: the build checks the flame type labels agree, and writes the weapon table
+(`dll/src/weapon_table.rs`, committed so the DLL builds on its own) from `tools/weapons.py` and the game's data.
+
+## Adding a melee weapon
+
+One entry in `WEAPONS` (`tools/weapons.py`): its EquipParamWeapon ID, the default color of its effects, its part's
+colored materials (blades, emissives: a material whose colors are the weapon's look), and effects to leave stock. The
+build reads the rest from the game's data: its model and behavior variation, the effects its animations and bullets
+play, its hit effects, its materials' color parameters; and it writes the DLL's table. The build then prints what it
+found per weapon.
+
+Limits (a modded weapon may hit them):
+- **Ten weapons.** Their colors are saved in one free paint section's ten color fields ([storage.md](storage.md)),
+  in `WEAPONS`' order (never reorder it). An eleventh needs another place to save its color.
+- **Effect IDs 990000-999999.** The bullet and muzzle flash hooks only remap that range (`CUSTOM_COLUMN_EFFECTS` in
+  `columns.rs` and `tools/weapons.py`); the build stops on others.
+- **Copy numbers.** A part copy's model number is the model's with its leading digit d -> 9 - d; the build stops if
+  that number is taken in the game's parts folder.
+- **Files in the game folder.** The build reads parts, effects and params from the game folder; a weapon whose files
+  come from another mod's package needs them there (or the build pointed at them).
+- **Hit effects** on terrain and AC bodies only (concepts 10, 103), as for the stock weapons.

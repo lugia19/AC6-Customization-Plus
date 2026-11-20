@@ -6,10 +6,11 @@ import subprocess
 
 def unpacked(path):
     """WitchyBND's folder naming, next to the file: regulation.bin -> regulation-bin, x.ffxbnd.dcx -> x-ffxbnd-dcx-wffxbnd
-    (the same for matbinbnd)."""
+    (the same for matbinbnd), x.anibnd -> x-anibnd-wanibnd."""
     name = os.path.basename(path)
-    kind = re.search(r"\.(ffxbnd|matbinbnd)\.dcx$", name)
-    folder = name.replace(".", "-") + (f"-w{kind.group(1)}" if kind else "")
+    kind = re.search(r"\.(ffxbnd|matbinbnd)\.dcx$|\.(anibnd)$", name)
+    kind = kind and (kind.group(1) or kind.group(2))
+    folder = name.replace(".", "-") + (f"-w{kind}" if kind else "")
     return os.path.join(os.path.dirname(path), folder)
 
 
