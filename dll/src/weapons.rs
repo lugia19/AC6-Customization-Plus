@@ -2,10 +2,11 @@
 //! - Effects: each weapon effect has a replace row whose custom columns (the player's only: columns.rs's color type
 //!   hook) play a copy tinted by external values (build.py WEAPON_EFFECTS): a weapon's color on a block from EXT_BASE +
 //!   10 * its model (ext_values.rs).
-//! - Blades that are a material of the part (build.py WEAPON_BLADE_MATERIALS): the player's AC loads a copy of the part,
-//!   model 0xxx -> 9xxx, whose blade material is its own copy. Hooks: the AC parts loader 0x1410d8460 notes whether
-//!   the player's parts object is loading (a thread-local: the name builder runs inside it), the part name builder
-//!   0x1415d0080 then renames. The copied materials are found by name in the game's
+//! - Colored materials of the part (blades, emissives; tools/weapons.py WEAPON_MATERIALS): the player's AC loads a copy
+//!   of the part, the model number's leading digit d -> 9 - d (0221 -> 9221, 1210 -> 8210), whose colored materials
+//!   are its own copies. Hooks: the AC parts loader 0x1410d8460 notes whether the player's parts object is loading (a
+//!   thread-local: the name builder runs inside it), the part name builder 0x1415d0080 then renames. The copied
+//!   materials are found by name in the game's
 //!   material repository (MtdRepository) and their colors set like the game's own matbin reload does: the value, then a
 //!   commit that rebuilds the material's constant buffer.
 //! Colors: the WEAPON VFX row (rows.rs), saved with the AC: every melee weapon has its own color in the row's section
@@ -29,29 +30,57 @@ struct Weapon {
     model: u16,
     /// What its effects get until a color is set.
     default: u32,
-    /// Its blade material's copy (build.py player_copy), if the blade is a material of the part.
-    blade: Option<&'static [u16]>,
+    /// Its colored materials' copies (tools/weapons.py player_copy).
+    materials: &'static [Material],
+}
+
+/// A material's name and its color parameters (a material may lack some).
+struct Material {
+    name: &'static [u16],
+    colors: &'static [&'static [u16]],
+}
+
+const fn blade(name: &'static [u16]) -> Material {
+    Material { name, colors: &LASER_BLADE_COLORS }
 }
 
 const WEAPONS: [Weapon; 10] = [
-    Weapon { id: 20010000, model: 211, default: 0x99FFFF, blade: Some(&utf16(b"P[WP_9210]_Laser\0")) },
-    Weapon { id: 20020000, model: 221, default: 0x4DB3FF, blade: Some(&utf16(b"P[WP_9220]_Laser\0")) },
-    Weapon { id: 20000100, model: 230, default: 0xFF4D4D, blade: None },
-    Weapon { id: 20040000, model: 241, default: 0x4DB3FF, blade: Some(&utf16(b"P[WP_9240]_Laser\0")) },
-    Weapon { id: 20000200, model: 250, default: 0x80FFCC, blade: Some(&utf16(b"P[WP_9250]_Laser\0")) },
-    Weapon { id: 20000300, model: 251, default: 0xFF4D4D, blade: Some(&utf16(b"P[WP_9251]_Laser\0")) },
-    Weapon { id: 20030000, model: 411, default: 0x66CCFF, blade: Some(&utf16(b"P[WP_9410]_Laser\0")) },
-    Weapon { id: 20050000, model: 610, default: 0x4DB3FF, blade: Some(&utf16(b"P[WP_9610]_Laser\0")) },
-    Weapon { id: 20090000, model: 910, default: 0xFFCC4D, blade: None },
-    Weapon { id: 20070000, model: 1210, default: 0x7766FF, blade: None },
+    Weapon { id: 20010000, model: 211, default: 0x99FFFF, materials: &[blade(&utf16(b"P[WP_9210]_Laser\0"))] },
+    Weapon { id: 20020000, model: 221, default: 0x4DB3FF, materials: &[blade(&utf16(b"P[WP_9220]_Laser\0"))] },
+    Weapon {
+        id: 20000100, model: 230, default: 0xFF4D4D,
+        materials: &[Material { name: &utf16(b"P[WP_9230]_LB_Emissive_Glow\0"), colors: &LASER_EMISSIVE_COLORS }],
+    },
+    Weapon { id: 20040000, model: 241, default: 0x4DB3FF, materials: &[blade(&utf16(b"P[WP_9240]_Laser\0"))] },
+    Weapon { id: 20000200, model: 250, default: 0x80FFCC, materials: &[blade(&utf16(b"P[WP_9250]_Laser\0"))] },
+    Weapon { id: 20000300, model: 251, default: 0xFF4D4D, materials: &[blade(&utf16(b"P[WP_9251]_Laser\0"))] },
+    Weapon { id: 20030000, model: 411, default: 0x66CCFF, materials: &[blade(&utf16(b"P[WP_9410]_Laser\0"))] },
+    Weapon { id: 20050000, model: 610, default: 0x4DB3FF, materials: &[blade(&utf16(b"P[WP_9610]_Laser\0"))] },
+    Weapon { id: 20090000, model: 910, default: 0xFFCC4D, materials: &[] },
+    Weapon {
+        id: 20070000, model: 1210, default: 0x7766FF,
+        materials: &[Material { name: &utf16(b"P[WP_8210]_Plasmawire\0"), colors: &PLASMA_WIRE_COLORS }],
+    },
 ];
 // A weapon's nine external values start at EXT_BASE + EXT_BLOCK * model (build.py reads EXT_BASE).
 const EXT_BASE: i32 = 900000;
 const EXT_BLOCK: i32 = 10;
-const BLADE_COLORS: [&[u16]; 3] = [
+const LASER_BLADE_COLORS: [&[u16]; 5] = [
     &utf16(b"P_LaserBlade__001_snp_0_color_6\0"),
     &utf16(b"P_LaserBlade__001_snp_0_color_8\0"),
     &utf16(b"P_LaserBlade__001_snp_0_color_10\0"),
+    &utf16(b"P_LaserBlade__001_snp_0_color_12\0"),
+    &utf16(b"P_LaserBlade__001_snp_0_color_13\0"),
+];
+const LASER_EMISSIVE_COLORS: [&[u16]; 4] = [
+    &utf16(b"P_Laser__Emissive_Glow_snp_0_color_0\0"),
+    &utf16(b"P_Laser__Emissive_Glow_snp_0_color_2\0"),
+    &utf16(b"P_Laser__Emissive_Glow_snp_0_color_4\0"),
+    &utf16(b"P_Laser__Emissive_Glow_snp_0_color_6\0"),
+];
+const PLASMA_WIRE_COLORS: [&[u16]; 2] = [
+    &utf16(b"P_ACParts__Plasma_spinner__Emissive_Glow_snp_0_color_0\0"),
+    &utf16(b"P_ACParts__Plasma_spinner__Emissive_Glow_snp_0_color_3\0"),
 ];
 // A color parameter's rgba (then its intensity).
 const PARAM_VALUE_OFFSET: usize = 0x40;
@@ -156,28 +185,27 @@ unsafe extern "system" fn loader_impl(parts: usize, a2: usize, a3: usize, a4: us
     result
 }
 
-/// Builds a part's name ("WP_L_0221", "WP_L_0221_L"...); the player's blade parts get their copy's (the number's
-/// leading 0 -> 9).
+/// Builds a part's name ("WP_L_0221", "WP_L_0221_L"...); the player's parts with colored materials get their copy's
+/// (the number's leading digit d -> 9 - d).
 unsafe extern "system" fn part_name_impl(out: usize, row: usize, a3: usize, a4: usize, a5: usize) -> usize {
     let result = unsafe { orig::<PartNameFn>(&ORIG_PART_NAME)(out, row, a3, a4, a5) };
     if LOADING_PLAYERS.get() {
-        rename_blade_part(out);
+        rename_part(out);
     }
     result
 }
 
-fn rename_blade_part(string: usize) -> Option<()> {
+fn rename_part(string: usize) -> Option<()> {
     let length = game::read::<usize>(string + STRING_LENGTH_OFFSET)?;
     let inline = game::read::<usize>(string + STRING_CAPACITY_OFFSET)? <= 7;
     let at = if inline { string + 8 } else { game::read::<usize>(string + 8)? };
     let chars = game::read::<[u16; 10]>(at)?;
-    let digits = String::from_utf16(chars.get(6..9)?).ok()?;
     let ends = length == 9 || length > 9 && chars[9] == u16::from(b'_');
-    let model: u16 = digits.parse().ok()?;
-    if chars[..6] != utf16(b"WP_L_0") || !ends || !WEAPONS.iter().any(|w| w.model == model && w.blade.is_some()) {
+    let model: u16 = String::from_utf16(&chars[5..9]).ok()?.parse().ok()?;
+    if chars[..5] != utf16(b"WP_L_") || !ends || !WEAPONS.iter().any(|w| w.model == model && !w.materials.is_empty()) {
         return None;
     }
-    unsafe { *((at + 5 * 2) as *mut u16) = u16::from(b'9') };
+    unsafe { *((at + 5 * 2) as *mut u16) = u16::from(b'9') - (chars[5] - u16::from(b'0')) };
     Some(())
 }
 
@@ -185,34 +213,35 @@ pub(crate) fn ext_blocks() -> impl Iterator<Item = Block> {
     WEAPONS.iter().zip(&CHANNELS).map(|(weapon, channels)| Block { first: EXT_BASE + EXT_BLOCK * i32::from(weapon.model), channels })
 }
 
-/// A copied blade's material and color parameters, with their stock rgb.
-struct Blade {
+/// A copied material in the game's repository, and its color parameters with their stock rgb.
+struct Found {
     material: usize,
     params: Vec<(usize, [f32; 3])>,
 }
 
-fn find_blade(name: &[u16]) -> Option<Blade> {
+fn find_material(material: &Material) -> Option<Found> {
     let repository = game::read::<usize>(MTD_REPOSITORY_ADDR).filter(|&r| r != 0)?;
-    let rescap = Some(unsafe { game_fn::<FindFn>(FIND_MATERIAL_ADDR)(repository, name.as_ptr()) }).filter(|&r| r != 0)?;
-    let material = game::read::<usize>(rescap + RESCAP_MATERIAL_OFFSET).filter(|&m| m != 0)?;
+    let rescap = Some(unsafe { game_fn::<FindFn>(FIND_MATERIAL_ADDR)(repository, material.name.as_ptr()) })
+        .filter(|&r| r != 0)?;
+    let address = game::read::<usize>(rescap + RESCAP_MATERIAL_OFFSET).filter(|&m| m != 0)?;
     let find_param: FindFn = unsafe { game_fn(FIND_PARAM_ADDR) };
-    let params = BLADE_COLORS.iter().map(|color| {
-        let param = Some(unsafe { find_param(material, color.as_ptr()) }).filter(|&p| p != 0)?;
+    let params = material.colors.iter().filter_map(|color| {
+        let param = Some(unsafe { find_param(address, color.as_ptr()) }).filter(|&p| p != 0)?;
         Some((param, game::read::<[f32; 3]>(param + PARAM_VALUE_OFFSET)?))
     });
-    Some(Blade { material, params: params.collect::<Option<_>>()? })
+    Some(Found { material: address, params: params.collect() })
 }
 
-/// Each blade color takes the chosen color, at its stock brightness (its brightest channel); stock without one.
-fn paint_blade(blade: &Blade, rgb: Option<u32>) {
-    for &(param, stock) in &blade.params {
+/// Each color takes the chosen color, at its stock brightness (its brightest channel); stock without one.
+fn paint(found: &Found, rgb: Option<u32>) {
+    for &(param, stock) in &found.params {
         let value = rgb.map_or(stock, |rgb| {
             let brightest = stock.iter().copied().fold(0.0, f32::max);
             ext_values::channels(rgb).map(|c| c * brightest)
         });
         unsafe { *((param + PARAM_VALUE_OFFSET) as *mut [f32; 3]) = value };
     }
-    unsafe { game_fn::<CommitFn>(COMMIT_ADDR)(blade.material) };
+    unsafe { game_fn::<CommitFn>(COMMIT_ADDR)(found.material) };
 }
 
 fn equipped(slot: usize) -> Option<&'static Weapon> {
@@ -268,17 +297,17 @@ fn current_colors() -> BTreeMap<u16, u32> {
 
 /// What was last applied, for the update loop (lib.rs).
 pub(crate) struct Weapons {
-    // The blades' materials, once found (they load at boot), in WEAPONS' order.
-    blades: [Option<Blade>; WEAPONS.len()],
+    // The weapons' materials, once found (they load at boot), in WEAPONS' and their materials' order.
+    materials: Vec<Option<Found>>,
     colors: Option<BTreeMap<u16, u32>>,
 }
 
 impl Weapons {
     pub(crate) fn new() -> Self {
-        Weapons { blades: [const { None }; WEAPONS.len()], colors: None }
+        Weapons { materials: WEAPONS.iter().flat_map(|w| w.materials).map(|_| None).collect(), colors: None }
     }
 
-    /// Applies the colors when they change, and to each blade material when it's found.
+    /// Applies the colors when they change, and to each material when it's found.
     pub(crate) fn update(&mut self) {
         let now = current_colors();
         let changed = self.colors.as_ref() != Some(&now);
@@ -289,16 +318,18 @@ impl Weapons {
                 ext_values::set_channels(channels, now.get(&weapon.model).copied().unwrap_or(weapon.default));
             }
         }
-        for (weapon, slot) in WEAPONS.iter().zip(&mut self.blades) {
-            let Some(name) = weapon.blade else { continue };
+        let materials = WEAPONS.iter().flat_map(|w| w.materials.iter().map(move |m| (w, m)));
+        for ((weapon, material), slot) in materials.zip(&mut self.materials) {
+            let color = now.get(&weapon.model).copied();
             if slot.is_none() {
-                *slot = find_blade(name);
-                if let Some(blade) = slot {
-                    log(&format!("weapons: blade material of {} at {:#x}", weapon.model, blade.material));
-                    paint_blade(blade, now.get(&weapon.model).copied());
+                *slot = find_material(material);
+                if let Some(found) = slot {
+                    log(&format!("weapons: material of {} at {:#x}, {} colors", weapon.model, found.material,
+                                 found.params.len()));
+                    paint(found, color);
                 }
             } else if changed {
-                paint_blade(slot.as_ref().unwrap(), now.get(&weapon.model).copied());
+                paint(slot.as_ref().unwrap(), color);
             }
         }
         self.colors = Some(now);

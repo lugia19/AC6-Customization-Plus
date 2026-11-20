@@ -32,7 +32,7 @@ The regulation fills columns 3-6, one per flame type: 3 combustion, 4 current, 5
 - **Replace table:** each row gets what the matching stock type uses (ALLMIND: current's), as its tinted copy if it
   has one: so a Coral flame type also gets the Coral expansion effects, recolored.
 - **Weapon rows:** the build adds a replace row for each melee weapon effect (`tools/weapons.py` WEAPON_EFFECTS; stock
-  in columns 0-2), whose columns 3-6 all play the weapon's tinted copy: a weapon's look doesn't depend on the flame
+  in columns 0-2), whose columns 3-6 all play the weapon's tinted bundle: a weapon's look doesn't depend on the flame
   type.
 
 The hook on `0x140829de0` returns a custom column for the player's character and the stock type for everyone else.

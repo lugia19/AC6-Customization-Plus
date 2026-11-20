@@ -50,10 +50,11 @@ Everything is stored in the AC's paint data, so it's saved with the AC and carri
 
 **WEAPON VFX** is for your melee weapons: its panel shows the melee weapon on your left arm and the one in your left
 weapon bay, each with its color; like the game's own rows, the preview flashes the weapon you're on. Every melee weapon
-keeps its own color on the AC, so swapping weapons shows each one's color. Covered: the energy blades (HI-32: BU-TT/A, Vvc-770LB, WLT 101, VP-67LD, MOONLIGHT, ML-REDSHIFT, Vvc-774LS,
-VE-67LLA: blade and effects, light waves included) and the VP-67EB stun baton and HMMR plasma thrower (effects). Only
-your AC changes; enemies with the same weapon keep the stock look. Without a color, a weapon keeps its stock blade, and
-its effects get a color close to their stock one.
+keeps its own color on the AC, so swapping weapons shows each one's color, and dark colors work as they do for the
+thrusters. Covered: the energy blades (HI-32: BU-TT/A, Vvc-770LB, WLT 101, VP-67LD, MOONLIGHT, ML-REDSHIFT,
+Vvc-774LS, VE-67LLA: blade or glow and effects, light waves included), the HMMR plasma thrower (its chain and effects)
+and the VP-67EB stun baton (effects). Only your AC changes; enemies with the same weapon keep the stock look. Without a
+color, a weapon keeps its stock look, and its effects get a color close to their stock one.
 
 Coming from 0.1.0 (AC6-Thruster-Customization)? The save file has a new name: rename `PaintMenu.sl2` to
 `CustomizationPlus.sl2` in your save folder to keep what you did there.

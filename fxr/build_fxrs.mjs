@@ -13,8 +13,8 @@
 // color to the thruster color (two more pairs of copies; the accent is a second set of external values), in a bundle at
 // the row's current flame + ALLMIND_BUNDLE_OFFSET.
 // Other effects (the core expansions') get the same copies, tinted by the expansion color instead, in a bundle at
-// S + BUNDLE_OFFSET, for every flame type. Melee weapons' effects get one copy each at S + WEAPON_OFFSET, tinted by
-// their weapon's color.
+// S + BUNDLE_OFFSET, for every flame type. Melee weapons' effects get the same pair at S + WEAPON_OFFSETS, tinted by
+// their weapon's color, in a bundle at S + WEAPON_BUNDLE_OFFSET.
 // Usage: node build_fxrs.mjs <unpacked sfxbnd_commoneffects effect dir> <id map json out> <input json>
 //        <unpacked sfxbnd_m30 effect dir> [bundles dir]
 // (input: {flames: a list of [combustion, current, Coral] stock FXR IDs, others: a list of stock FXR IDs,
@@ -54,9 +54,10 @@ const EXPANSION = { ext: 900021, offsets: [9100000, 9200000], byLuminance: true 
 // a thruster color copy, weighted so that the two (additive) add up to the fade.
 const FADING_ACCENT = { ext: 900012, offsets: [9300000, 9400000], accent: true }
 const FADING_MAIN = { ext: 900001, offsets: [9500000, 9600000], accent: false }
-// Melee weapons' effects (build.py WEAPON_EFFECTS): one copy each (no subtractive one), tinted by the weapon's own
-// color, which their replace rows play directly (listed in otherBundles).
-const WEAPON_OFFSET = 9700000
+// Melee weapons' effects (build.py WEAPON_EFFECTS): the same pair, tinted by the weapon's own color, in a bundle at
+// S + WEAPON_BUNDLE_OFFSET that their replace rows play (listed in otherBundles).
+const WEAPON_OFFSETS = [9700000, 9800000]
+const WEAPON_BUNDLE_OFFSET = 9900000
 // Game value: the spawner's termination signal.
 const EXT_TERMINATE = 0
 // Bundle IDs: a row's flame for a stock type + BUNDLE_OFFSET; its current flame + ALLMIND_BUNDLE_OFFSET for ALLMIND.
@@ -364,7 +365,7 @@ const pending = [
   ...rows.flatMap(rowFlames => flameTypes(rowFlames).flat()),
   ...others.map(sfx => [sfx, EXPANSION, null]),
   ...weapons.flatMap(([ext, effects]) => {
-    const kind = { ext, offsets: [WEAPON_OFFSET] }
+    const kind = { ext, offsets: WEAPON_OFFSETS }
     return effects.map(sfx => [sfx, kind, null])
   }),
 ]
@@ -423,8 +424,11 @@ for (const sfx of others) {
   otherBundles[sfx] = sfx + BUNDLE_OFFSET
   await save(bundle(sfx + BUNDLE_OFFSET, [[sfx, EXPANSION]]))
 }
-for (const [, effects] of weapons) {
-  for (const sfx of effects) otherBundles[sfx] = sfx + WEAPON_OFFSET
+for (const [ext, effects] of weapons) {
+  for (const sfx of effects) {
+    otherBundles[sfx] = sfx + WEAPON_BUNDLE_OFFSET
+    await save(bundle(sfx + WEAPON_BUNDLE_OFFSET, [[sfx, { ext, offsets: WEAPON_OFFSETS }]]))
+  }
 }
 if (bundlesDir) {
   console.log(`${saved.size - Object.keys(resources).length} bundles and the boss's effects in ${bundlesDir}`)

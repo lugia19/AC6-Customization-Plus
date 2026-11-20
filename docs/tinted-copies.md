@@ -17,10 +17,10 @@ once per color change.
   - remove: the additive particles again, subtracting what the color lacks from the background, so dark colors
     darken it (additive flames can't get darker than what's behind them). Nothing for bright colors.
 - **Expansions** (the expansion color): the same pair, greyed by luminance so white is about as bright as stock.
-- **Melee weapons** (the weapon's color): one copy (add), no remove.
+- **Melee weapons** (the weapon's color): the same pair.
 
-A column holds one effect ID, so the flame and expansion pairs are played through a **bundle**: an FXR holding only
-proxies to the copies, ending when the game ends the stock one (external value 0, the spawner's termination signal).
+A column holds one effect ID, so the pairs are played through a **bundle**: an FXR holding only proxies to the
+copies, ending when the game ends the stock one (external value 0, the spawner's termination signal).
 
 Every new FXR needs its source's resource list (its textures and models); the build copies them, with the neutral
 models swapped in ([model-copies.md](model-copies.md)).
@@ -34,7 +34,8 @@ models swapped in ([model-copies.md](model-copies.md)).
 | + 8,000,000 | ALLMIND bundle (from the row's current flame) |
 | + 9,300,000 / + 9,400,000 | ALLMIND: accent copies (add / remove) |
 | + 9,500,000 / + 9,600,000 | ALLMIND: thruster color copies (add / remove) |
-| + 9,700,000 | melee weapon copies |
+| + 9,700,000 / + 9,800,000 | melee weapon copies (add / remove) |
+| + 9,900,000 | melee weapon bundle |
 
 The build stops on any collision with an existing effect or another copy.
 
