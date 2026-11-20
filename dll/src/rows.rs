@@ -29,13 +29,25 @@ const ROW_COUNT: usize = 3;
 // A row's kind is FIRST_KIND + its index: past the stock ones (0-5 the color slots, 6 COLOR SET, 7 PATTERN,
 // 8 WEATHERING).
 const FIRST_KIND: u32 = 9;
-// The paint section a row keeps its values in, whichever part is selected: its colors in colors 0-2, its choice
-// in material 0. No part uses these sections. Row 0 is on 7 because version 0.1.0 kept the thruster color there.
-static SECTIONS: [u8; ROW_COUNT] = [7, 6, 9];
-// A paint section: its six colors (u32s of RGBA bytes), its six materials (u16s).
+// Where a row keeps its values, whichever part is selected (docs/storage.md): a paint section no part uses, its
+// colors from one of the section's colors on, its choice in one of its materials. GENERATOR and HUD share section 7;
+// WEAPON VFX (a dynamic row) says where each weapon's color is itself, in sections 9 and 6.
+struct Storage {
+    section: usize,
+    first_color: usize,
+    choice_material: usize,
+}
+static STORAGE: [Storage; ROW_COUNT] = [
+    Storage { section: 7, first_color: 0, choice_material: 0 },
+    Storage { section: 7, first_color: 3, choice_material: 1 },
+    Storage { section: 9, first_color: 0, choice_material: 0 },
+];
+// A paint section: its six colors (u32s of RGBA bytes), its six materials (u16s), ..., its four pattern colors.
 const SECTION_SIZE: usize = 0x44;
 const SECTION_COLORS_OFFSET: usize = 8;
 const SECTION_MATERIALS_OFFSET: usize = 0x20;
+const SECTION_PATTERN_COLORS_OFFSET: usize = 0x30;
+const SECTION_COLORS: usize = 6;
 
 /// Alpha byte that marks a stored color as picked in its row. The game writes 0xFF into every color it stores (the
 /// unused sections hold its default grey, older saves can have black with 0), so 0xFE only ever comes from us. It
@@ -64,8 +76,8 @@ struct Row {
     slot: Option<fn(usize) -> Option<Slot>>,
 }
 
-/// Where a dynamic row's entry keeps its color right now: an offset in the row's section (a color or pattern color
-/// field), and its default (0xRRGGBB).
+/// Where a dynamic row's entry keeps its color right now: its offset in the paint block (a color field, color_field),
+/// and its default (0xRRGGBB).
 #[derive(Clone, Copy)]
 pub(crate) struct Slot {
     pub(crate) offset: usize,
@@ -175,24 +187,29 @@ pub(crate) fn claim_dynamic(row: usize, label: &str, count: usize, labels: fn(us
 }
 
 fn color_offset(row: usize, which: usize) -> usize {
-    SECTIONS[row] as usize * SECTION_SIZE + SECTION_COLORS_OFFSET + which * 4
+    color_field(STORAGE[row].section, STORAGE[row].first_color + which)
 }
 
 fn choice_offset(row: usize) -> usize {
-    SECTIONS[row] as usize * SECTION_SIZE + SECTION_MATERIALS_OFFSET
+    STORAGE[row].section * SECTION_SIZE + SECTION_MATERIALS_OFFSET + STORAGE[row].choice_material * 2
+}
+
+/// Where a section's color field `field` is in the paint block: its six colors (0-5), then its four pattern colors
+/// (6-9; no part uses them in the sections the rows use).
+pub(crate) fn color_field(section: usize, field: usize) -> usize {
+    assert!(field < 10);
+    section * SECTION_SIZE + match field {
+        0..SECTION_COLORS => SECTION_COLORS_OFFSET + field * 4,
+        _ => SECTION_PATTERN_COLORS_OFFSET + (field - SECTION_COLORS) * 4,
+    }
 }
 
 /// Where an entry's color is, and its default as stored: a dynamic row's slot, else its color field.
 fn entry(settings: &Row, row: usize, which: usize) -> Option<(usize, u32)> {
     match settings.slot {
-        Some(slot) => slot(which).map(|slot| (section_offset(row) + slot.offset, stored_default(slot.default))),
+        Some(slot) => slot(which).map(|slot| (slot.offset, stored_default(slot.default))),
         None => Some((color_offset(row, which), settings.default_colors[which])),
     }
-}
-
-/// Where a row's section starts in the paint block.
-pub(crate) fn section_offset(row: usize) -> usize {
-    SECTIONS[row] as usize * SECTION_SIZE
 }
 
 /// A color shown for a stored value, opaque: the stored one if it was picked in the row, otherwise the default.
@@ -215,10 +232,10 @@ pub(crate) fn color(row: usize, which: usize) -> Option<u32> {
     Some(swap_red_blue(shown_color(settings(row)?, which, game::paint_value(color_offset(row, which))?)))
 }
 
-/// A color picked in a row, at `offset` in its section on the player's AC (0xRRGGBB): None if not picked or the
+/// A color picked in a dynamic row, at `offset` in the player's paint block (0xRRGGBB): None if not picked or the
 /// player's data isn't loaded.
-pub(crate) fn picked_at(row: usize, offset: usize) -> Option<u32> {
-    let stored = game::paint_value::<u32>(section_offset(row) + offset)?;
+pub(crate) fn picked_at(offset: usize) -> Option<u32> {
+    let stored = game::paint_value::<u32>(offset)?;
     (stored & ALPHA_MASK == PICKED_ALPHA).then(|| swap_red_blue(stored))
 }
 

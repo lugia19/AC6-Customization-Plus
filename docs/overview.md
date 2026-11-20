@@ -84,8 +84,9 @@ play, its hit effects, its materials' color parameters; and it writes the DLL's 
 found per weapon.
 
 Limits (a modded weapon may hit them):
-- **Ten weapons.** Their colors are saved in one free paint section's ten color fields ([storage.md](storage.md)),
-  in `WEAPONS`' order (never reorder it). An eleventh needs another place to save its color.
+- **Twenty weapons.** Their colors are saved in two free paint sections' ten color fields each
+  ([storage.md](storage.md)), in `WEAPONS`' order (never reorder it). More need another place to save their colors
+  (section 7 still has a color and its pattern colors free).
 - **Effect IDs 990000-999999.** The bullet and muzzle flash hooks only remap that range (`CUSTOM_COLUMN_EFFECTS` in
   `columns.rs` and `tools/weapons.py`); the build stops on others.
 - **Copy numbers.** A part copy's model number is the model's with its leading digit d -> 9 - d; the build stops if

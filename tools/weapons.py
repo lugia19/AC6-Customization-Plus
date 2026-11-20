@@ -23,7 +23,8 @@ class Weapon:
     stock: dict = field(default_factory=dict)
 
 
-# In the DLL's order, which is also where their colors are saved (the paint section's ten color fields): never reorder.
+# In the DLL's order, which is also where their colors are saved (two free paint sections' ten color fields each,
+# docs/storage.md): never reorder; twenty at most.
 WEAPONS = [
     Weapon(20010000, 0x99FFFF, ["P[WP_0210]_Laser"]),  # HI-32: BU-TT/A pulse blade
     Weapon(20020000, 0x4DB3FF, ["P[WP_0220]_Laser"]),  # Vvc-770LB laser blade
@@ -37,6 +38,8 @@ WEAPONS = [
     Weapon(20090000, 0xFFCC4D),  # VP-67EB stun baton
     Weapon(20070000, 0x7766FF, ["P[WP_1210]_Plasmawire"]),  # 44-143 HMMR
 ]
+
+assert len(WEAPONS) <= 20, "the weapons' colors are saved in twenty color fields"
 
 # A weapon's color is served on nine external values from EXT_BASE + EXT_BLOCK * its model (dll/src/ext_values.rs).
 EXT_BASE = 900000

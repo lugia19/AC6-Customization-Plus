@@ -11,8 +11,9 @@
 //!   materials are found by name in the game's
 //!   material repository (MtdRepository) and their colors set like the game's own matbin reload does: the value, then a
 //!   commit that rebuilds the material's constant buffer.
-//! Colors: the WEAPON VFX row (rows.rs), saved with the AC: every melee weapon has its own color in the row's section
-//! (WEAPONS' order: colors 0-5, then pattern colors 0-3; docs/storage.md), and the panel shows the two equipped
+//! Colors: the WEAPON VFX row (rows.rs), saved with the AC: every melee weapon has its own color in a paint section no
+//! part uses (WEAPONS' order: section 9's ten color fields, then section 6's; docs/storage.md), and the panel shows the
+//! two equipped
 //! ones: the left-arm melee weapon and the left-back one (melee weapons go nowhere else). A weapon without a color
 //! keeps its stock blade, and its effects get the weapon's default color. On the row the preview flashes the weapons'
 //! units, in the panel the hovered entry's (the highlight hook 0x14102c4c0).
@@ -55,10 +56,10 @@ const PARAM_VALUE_OFFSET: usize = 0x40;
 
 // The panel's entries: the left-arm weapon's color, the left-back one's.
 const SLOTS: [usize; 2] = [SLOT_LEFT_ARM, SLOT_LEFT_BACK];
-// Where weapon i's color is in the row's section: the six colors, then the four pattern colors (no part uses them).
-const SECTION_COLORS_OFFSET: usize = 0x8;
-const SECTION_PATTERN_COLORS_OFFSET: usize = 0x30;
-const _: () = assert!(WEAPONS.len() <= 10, "the row's section has room for ten weapons' colors");
+// Where the weapons' colors are, in WEAPONS' order: the color fields (rows::color_field) of these sections.
+const STORAGE_SECTIONS: [usize; 2] = [9, 6];
+const FIELDS_PER_SECTION: usize = 10;
+const _: () = assert!(WEAPONS.len() <= STORAGE_SECTIONS.len() * FIELDS_PER_SECTION, "no room for the weapons' colors");
 // The panel's labels: the weapons' names from the game's text (MsgRepository: `const wchar_t* text(repository,
 // category, id, fallback)`; category 11, the item text's weapon names, by EquipParamWeapon ID).
 const MSG_REPOSITORY_ADDR: usize = 0x144e256d8;
@@ -236,11 +237,9 @@ fn label(which: usize) -> &'static [u16] {
     equipped(SLOTS[which]).and_then(|weapon| weapon_name(weapon.id)).unwrap_or(&NO_WEAPON)
 }
 
+/// Where a weapon's color is in the paint block.
 fn storage_offset(weapon: usize) -> usize {
-    match weapon {
-        0..6 => SECTION_COLORS_OFFSET + weapon * 4,
-        _ => SECTION_PATTERN_COLORS_OFFSET + (weapon - 6) * 4,
-    }
+    rows::color_field(STORAGE_SECTIONS[weapon / FIELDS_PER_SECTION], weapon % FIELDS_PER_SECTION)
 }
 
 /// The equipped melee weapon of a slot, as its index in WEAPONS.
@@ -264,7 +263,7 @@ fn current_colors() -> BTreeMap<u16, u32> {
     SLOTS.iter()
         .filter_map(|&slot| {
             let weapon = equipped_index(slot)?;
-            Some((WEAPONS[weapon].model, rows::picked_at(ROW_WEAPONS, storage_offset(weapon))?))
+            Some((WEAPONS[weapon].model, rows::picked_at(storage_offset(weapon))?))
         })
         .collect()
 }

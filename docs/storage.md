@@ -30,19 +30,21 @@ at `0x144e03a08`; the chain is null while loading). The Paint screen edits a wor
 
 ## What the rows use
 
-| Section | Row | colors 0-5 | material 0 | pattern colors 0-3 |
-|---|---|---|---|---|
-| 7 | 0 GENERATOR | 0 thruster color, 1 accent color, 2 expansion color | flame type | |
-| 6 | 1 HUD | 0 HUD color, 1 warning color | opacity | |
-| 9 | 2 WEAPON VFX | weapons 0-5 (`dll/src/weapons.rs` WEAPONS order) | | weapons 6-9 |
-| 10 | not ours (written by something else; Sundance's Extension parts mod uses it) | | | |
+| Section | colors 0-5 | materials 0-5 | pattern colors 0-3 |
+|---|---|---|---|
+| 7 | GENERATOR: 0 thruster color, 1 accent color, 2 expansion color; HUD: 3 HUD color, 4 warning color; 5 free | 0 GENERATOR's flame type, 1 HUD's opacity; 2-5 free | free |
+| 9 | WEAPON VFX: weapons 0-5 | free | weapons 6-9 |
+| 6 | WEAPON VFX: weapons 10-15 | free | weapons 16-19 |
+| 10 | not ours (written by something else; Sundance's Extension parts mod uses it) | | |
 
-Row 0 is on section 7 because version 0.1.0 stored its thruster color there. Unused in all of them: materials 1-5,
-weathering, the pattern design and size (and the pattern colors of 7 and 6).
+Each row says where its values are (`rows.rs` STORAGE: a section, its first color, its choice's material); GENERATOR is
+on section 7 because version 0.1.0 stored its thruster color there. Unused in all of them: weathering, the pattern
+design and size.
 
-WEAPON VFX keeps one color per melee weapon (ten fit), and its panel shows the two equipped ones
-(`rows::claim_dynamic`): the weapon in a slot decides which field the entry edits, so each weapon keeps its color
-when swapped out and back.
+WEAPON VFX keeps one color per melee weapon, in `WEAPONS`' order (`tools/weapons.py`): section 9's ten color fields
+(its colors, then its pattern colors), then section 6's, twenty at most. Its panel shows the two equipped ones
+(`rows::claim_dynamic`): the weapon in a slot decides which field the entry edits, so each weapon keeps its color when
+swapped out and back.
 
 ## Encoding
 
