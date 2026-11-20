@@ -201,12 +201,15 @@ fn find_material(material: &Material) -> Option<Found> {
     Some(Found { material: address, params: params.collect() })
 }
 
-/// Each color takes the chosen color, at its stock brightness (its brightest channel); stock without one.
+/// Each color takes the chosen color, as white as the stock one is (its saturation: a blade's pale highlight layer stays
+/// pale), at its stock brightness (its brightest channel); stock without one.
 fn paint(found: &Found, rgb: Option<u32>) {
     for &(param, stock) in &found.params {
         let value = rgb.map_or(stock, |rgb| {
             let brightest = stock.iter().copied().fold(0.0, f32::max);
-            ext_values::channels(rgb).map(|c| c * brightest)
+            let palest = stock.iter().copied().fold(f32::INFINITY, f32::min);
+            let saturation = if brightest > 0.0 { 1.0 - palest / brightest } else { 1.0 };
+            ext_values::channels(rgb).map(|c| (1.0 - saturation + saturation * c) * brightest)
         });
         unsafe { *((param + PARAM_VALUE_OFFSET) as *mut [f32; 3]) = value };
     }

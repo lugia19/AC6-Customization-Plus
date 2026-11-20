@@ -23,6 +23,10 @@ Some melee weapons' colors are materials of the weapon's model, with fixed color
 | Weapon | Material | Colors |
 |---|---|---|
 | the energy blades (211, 221, 241, 250, 251, 411, 610) | `P[WP_xxx0]_Laser` (shader `P[LaserBlade]_001`): the blade | `color_6`, `_8`, `_10`, `_12`, `_13` (some `_15`) |
+
+What the blade's colors draw (marker test on ML-REDSHIFT, normal and charged swings): `color_12` the main body,
+`color_6` bright core streaks, `color_8` sparse filaments at the tip and end, `color_10` the pale wispy highlight
+strands; `color_13` and `_15` nothing seen. With all of them black the blade is gone: all its light is these.
 | WLT 101 (230) | `P[WP_0230]_LB_Emissive_Glow` (`P[Laser]_Emissive_Glow`): the red glow | `color_0`, `_2`, `_4`, `_6` |
 | HMMR (1210) | `P[WP_1210]_Plasmawire` (`P[ACParts][Plasma_spinner]_Emissive_Glow`): the chain | `color_0`, `_3` |
 
@@ -47,7 +51,9 @@ preview load the stock part.
 `0x141344fe0(repository, L"P[WP_9220]_Laser")` -> `MtdResCap`, the material at `+0x78`;
 `0x142300730(material, L"..._color_6")` -> the parameter (`GXMaterialParam_HDRColor`), its rgba at `+0x40`, intensity
 at `+0x50`; then `0x1423020a0(material)` rebuilds the material's constant buffer, as the game's own matbin reload
-does. Each color takes the chosen color at its stock brightness (brightest channel); intensities stay. Set when the
+does. Each color takes the chosen color, as white as the stock one is (its saturation) and at its stock brightness
+(brightest channel); intensities stay. Black thus keeps a blade's pale highlight grey, and HMMR's half-saturated chain
+whitish. Set when the
 weapon's color changes; a weapon without one keeps its stock look.
 
 Which weapons the player has: the player's assembly `[ChrIns + 0x47e0]`, weapons at `+0xF4 + slot * 4` (EquipParamWeapon
