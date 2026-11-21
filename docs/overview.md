@@ -37,7 +37,7 @@ aren't there.
 the player and paint data pointer chains). One thread (`lib.rs` update loop) applies changed settings every 200 ms.
 Log: `Game\debug-logs\customization_plus.log`.
 
-Hooks (17). The game's Arxan protection puts back code it guards at irregular times, removing hooks, so the me3
+Hooks (19). The game's Arxan protection puts back code it guards at irregular times, removing hooks, so the me3
 profile turns it off (`disable_arxan`).
 
 | Hook | Function | For |
@@ -51,6 +51,7 @@ profile turns it off (`disable_arxan`).
 | `0x14102c4c0` | preview highlight | WEAPON VFX flashes the weapons (weapons.rs) |
 | `0x142b56480` | FXR external value read | serves the colors (ext_values.rs) |
 | `0x140829de0` | a character's generator color type | the player's column (columns.rs) |
+| `0x1415cdd90`, `0x1415ce050` | the effect tables' lookups | answer the custom columns (columns.rs) |
 | `0x140698380` | bullet effect spawn | the player's bullets' effects through the columns (columns.rs) |
 | `0x1408f0190` | muzzle flash spawn | the player's shots' muzzle flashes through the columns (columns.rs) |
 | `0x1410ff770` | a part model's paint | the player's weapon models' color entries (weapons.rs) |
@@ -65,7 +66,6 @@ profile turns it off (`disable_arxan`).
 
 | File | Made from | What changes |
 |---|---|---|
-| `regulation.bin` | the game's | custom columns 3-6 of the two effect tables; replace rows for the weapons' effects (`tools/params.py`) |
 | `sfx/sfxbnd_commoneffects.ffxbnd.dcx` | the game's (and ALLMIND's effects from `sfxbnd_m30`) | tinted copies and bundles; neutral model copies (`fxr/build_fxrs.mjs`, `tools/models.py`) |
 | `material/allmaterial.matbinbnd.dcx` | the game's | neutral materials for those models (`tools/models.py`) |
 | `shader_d3d12/shaderbdle.shaderbdlebnd.dcx` | the game's | keys on the weapon materials' color params (`tools/shaders.py`; cached in `cache/`, slow to repack) |
@@ -74,7 +74,9 @@ profile turns it off (`disable_arxan`).
 | `customization_plus.dll`, `customization-plus.me3` | `dll/`, the repo | |
 
 The DLL and the build share some tables: the build checks the flame type labels agree, and writes the weapon table
-(`dll/src/weapon_table.rs`, committed so the DLL builds on its own) from `tools/weapons.py` and the game's data.
+(`dll/src/weapon_table.rs`) from `tools/weapons.py` and the game's data, and the effect tables' custom columns
+(`dll/src/effect_table.rs`, [effect-columns.md](effect-columns.md)); both are committed so the DLL builds on its own.
+The game's `regulation.bin` is only read.
 
 ## Adding a melee weapon
 

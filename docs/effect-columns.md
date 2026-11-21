@@ -10,9 +10,14 @@ core expansions. The regulation has two tables for that, a row per effect the ga
 generator color type (`sfxId<t>`; -1 = the row's own effect, e.g. row 1003010, the assault boost startup flare, one
 flare for every type):
 
-- `ThrustersSfxIdParam_PC`: the thruster flames (20 effects), spawned at the thruster animation events.
-- `GeneratorTypeSfxIdRplace_PC` (the replace table; no paramdef: 8 s32 columns, rows not sorted): everything else
-  that depends on the generator (assault armor, pulse armor...), looked up by `0x1415ce050(type, effect)`.
+- `ThrustersSfxIdParam_PC` (param 0xB4): the thruster flames (20 effects), spawned at the thruster animation events.
+- `GeneratorTypeSfxIdRplace_PC` (param 0xB5, the replace table; no paramdef: 8 s32 columns, rows not sorted):
+  everything else that depends on the generator (assault armor, pulse armor...).
+
+Each is read only through its lookup, `int lookup(type, row)`: `0x1415cdd90` (thrusters) and `0x1415ce050`
+(replace). A missing row, a -1 column or a type outside 0-7 gives back the row itself. Checked statically (every
+caller, every getter of the two params) and at runtime: over a session, the generic param getter `0x1415c8980` was
+called for these two params exactly as often as their lookups ran.
 
 The type is the generator's thrustersColorType, read through `0x140829de0(chr_module)` (the character at
 `[chr_module + 8]`) every time one of these effects is picked: at each thruster event (`0x140786250`, `0x1407859f0`,
@@ -25,13 +30,16 @@ No stock weapon effect has a row, so they all play as is.
 
 ## The player's columns
 
-The regulation fills columns 3-6, one per flame type: 3 combustion, 4 current, 5 Coral, 6 ALLMIND.
+Columns 3-6, one per flame type: 3 combustion, 4 current, 5 Coral, 6 ALLMIND. They aren't in the regulation, which
+stays stock (other mods ship their own): the build writes them to `dll/src/effect_table.rs`, and hooks on both
+lookups answer types 3-6 from it, leaving the rest to the game.
 
 - **Thruster table:** each flame row gets that type's tinted flame (a bundle; the exhaust fumes, row 410031, stay
   stock).
 - **Replace table:** each row gets what the matching stock type uses (ALLMIND: current's), as its tinted copy if it
   has one: so a Coral flame type also gets the Coral expansion effects, recolored.
-- **Weapon rows:** the build adds a replace row for each melee weapon effect (below; stock in columns 0-2), whose columns 3-6 all play the weapon's tinted bundle: a weapon's look doesn't depend on the flame
+- **Weapon rows:** a replace row for each melee weapon effect (below; the game has none, so stock types get the
+  effect itself), whose columns 3-6 all play the weapon's tinted bundle: a weapon's look doesn't depend on the flame
   type.
 
 The hook on `0x140829de0` returns a custom column for the player's character and the stock type for everyone else.

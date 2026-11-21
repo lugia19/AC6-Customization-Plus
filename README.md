@@ -61,8 +61,9 @@ Everything is stored in the AC's paint data, so it's saved with the AC and carri
   overridden menu files, not this mod (it happens without the DLL too):
   [me3#902](https://github.com/garyttierney/me3/issues/902).
 - The new rows' labels and choices are in English in every language.
-- The package replaces whole game files (`regulation.bin`, the common effects, the material archive, the shader
-  bundle, two menu movies), so it doesn't combine with other mods that replace the same ones.
+- The package replaces whole game files (the common effects, the material archive, the shader bundle, two menu
+  movies), so it doesn't combine with other mods that replace the same ones. It leaves `regulation.bin` alone, so
+  gameplay mods that ship one work with it.
 - The assembly preview shows the stock blades (it's a separate model, not your AC).
 
 ## How it works

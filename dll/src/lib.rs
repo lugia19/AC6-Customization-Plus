@@ -10,8 +10,8 @@
 //! Hooks:
 //! - 4 Paint list functions, in rows.rs; the panels' setup and the material text (DEVICE's labels), in panel.rs.
 //! - 0x142b56480 FXR external value read, in ext_values.rs.
-//! - 0x140829de0 a character's generator color type, 0x140698380 the bullet effect spawn and 0x1408f0190 the muzzle
-//!   flash spawn, in columns.rs.
+//! - 0x140829de0 a character's generator color type, 0x1415cdd90 / 0x1415ce050 the effect tables' lookups,
+//!   0x140698380 the bullet effect spawn and 0x1408f0190 the muzzle flash spawn, in columns.rs.
 //! - 0x141609040 menu movie lookup and 0x1415f40b0 the Scaleform file opener: the HUD's look, in hud.rs.
 //! - 0x1410ff770 a part model's paint: the player's weapon models' color entries; 0x14102c4c0 the Paint preview's
 //!   highlight: WEAPON VFX flashes the weapons; in weapons.rs.

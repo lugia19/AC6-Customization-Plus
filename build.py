@@ -2,8 +2,8 @@
 
     python build.py --game "<...>/ARMORED CORE VI FIRES OF RUBICON/Game" --witchy "<...>/WitchyBND.exe"
 
-Needs node/npm, cargo (stable) and WitchyBND 3.x. Writes package/: the mod folder (regulation, custom flames and other
-tinted effects, materials, the shader bundle with the weapon colors' keys, the Paint movie with the extra rows, the
+Needs node/npm, cargo (stable) and WitchyBND 3.x. Writes package/: the mod folder (custom flames and other tinted effects,
+materials, the shader bundle with the weapon colors' keys, the Paint movie with the extra rows, the
 prepared HUD movie), the DLL and the me3 profile. The pieces are in tools/ (params.py, models.py, weapons.py,
 shaders.py, witchy.py, build_gfx.py, prepare_hud.py) and fxr/build_fxrs.mjs. The shader bundle is slow to repack:
 cached in cache/.
@@ -14,7 +14,6 @@ import json
 import os
 import re
 import shutil
-import struct
 import subprocess
 import sys
 
@@ -42,6 +41,14 @@ EXPANSION_ROWS = range(990000, 1000000)
 STOCK_FLAME_ROWS = {410031}
 
 
+def write_generated(name, text):
+    """A generated file of the DLL's (dll/src, committed so the DLL builds on its own), rewritten only on a change."""
+    path = os.path.join(ROOT, "dll", "src", name)
+    if not os.path.exists(path) or open(path).read() != text:
+        open(path, "w", newline="\n").write(text)
+        print(f"Updated {path}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--game", required=True, help="the game's Game folder (with regulation.bin and sfx/)")
@@ -56,10 +63,10 @@ def main():
     regulation = shutil.copy(os.path.join(args.game, "regulation.bin"), WORK)
     effects = shutil.copy(os.path.join(args.game, "sfx", "sfxbnd_commoneffects.ffxbnd.dcx"), WORK)
     materials = shutil.copy(os.path.join(args.game, "material", "allmaterial.matbinbnd.dcx"), WORK)
-    archives = [regulation, effects, materials]
-    # Only read: ALLMIND's thruster effects, for the ALLMIND flame type's extras (fxr/build_fxrs.mjs).
+    archives = [effects, materials]
+    # Only read: the params, and ALLMIND's thruster effects for the ALLMIND flame type's extras (fxr/build_fxrs.mjs).
     allmind = shutil.copy(os.path.join(args.game, "sfx", "sfxbnd_m30.ffxbnd.dcx"), WORK)
-    witchy([*archives, allmind], [unpacked(a) for a in [*archives, allmind]])
+    witchy([*archives, regulation, allmind], [unpacked(a) for a in [*archives, regulation, allmind]])
 
     params = unpacked(regulation)
     # The melee weapons (tools/weapons.py): their parts (only read), their animations and colored materials, what the
@@ -73,16 +80,8 @@ def main():
     weapon_data = weapons.derive(params, defs, os.path.join(unpacked(effects), "effect"), weapon_models, anibnds)
     weapons.report(weapon_models, weapon_data)
     weapon_colors = weapons.material_colors(unpacked(materials))
-    table = weapons.rust_table(weapon_models, weapon_data, weapon_colors)
-    table_path = os.path.join(ROOT, "dll", "src", "weapon_table.rs")
-    if not os.path.exists(table_path) or open(table_path).read() != table:
-        open(table_path, "w", newline="\n").write(table)
-        print(f"Updated {table_path}")
+    write_generated("weapon_table.rs", weapons.rust_table(weapon_models, weapon_data, weapon_colors))
 
-    # The DLL doesn't depend on anything below: build it meanwhile.
-    cargo = subprocess.Popen(["cargo", "+stable", "build", "--release"], cwd=os.path.join(ROOT, "dll"))
-    # If a later step fails, don't leave it compiling (and holding the target dir) after the build exits.
-    atexit.register(lambda: cargo.poll() is None and cargo.kill())
     # The generator-dependent effect tables: row = an effect the game spawns, column t (sfxId<t>) = what it uses for
     # generator color type t, -1 = the row's own effect (e.g. row 1003010, the assault boost startup flare, has no
     # columns: one flare for every type). Thrusters: the flames, which get custom bundles. Replace (no paramdef, 8 s32
@@ -145,25 +144,36 @@ def main():
             resource_list = resource_list.replace(f"s{model}.sib".encode(), f"s{neutral}.sib".encode())
         open(target, "wb").write(resource_list)
 
-    # The weapons' effects get rows (stock), whose custom columns the loop below fills with their tinted copies.
+    # The custom types' columns, which the DLL's lookup hooks answer (dll/src/effect_table.rs; the regulation stays
+    # stock): a flame row's bundles in the thruster table, what the matching stock type uses everywhere else (e.g. a
+    # Coral flame type gets the Coral expansion effects), as its bundle if it has one. The weapons' effects get rows
+    # of their own, playing their tinted copies. A lookup returns the row itself for a row or column it lacks, so
+    # values equal to the row are left out.
     weapon_rows = weapons.effect_rows(weapon_data)
     assert len(set(weapon_rows)) == len(weapon_rows), "an effect is played by two weapons (it has one color)"
-    for sfx in weapon_rows:
-        assert sfx not in replace.rows, f"replace row {sfx} exists"
-    replace.add_rows({sfx: struct.pack("<8i", *[sfx] * FIRST_CUSTOM_TYPE, *[-1] * (8 - FIRST_CUSTOM_TYPE))
-                      for sfx in weapon_rows})
-
-    # Params: the custom types' columns, a flame row's bundles in the thruster table, what the matching stock type uses
-    # everywhere else (e.g. a Coral flame type gets the Coral expansion effects), as its bundle if it has one.
-    for table, bundles in [(thrusters, bundles_of), (replace, {})]:
-        for row in table.rows:
+    lines = ["// Generated by build.py from the game's effect tables and the custom copies: don't edit.",
+             "// Included by columns.rs: per row, its custom types' effects (FIRST_CUSTOM_TYPE on), -1 = the row's own.", ""]
+    for name, table, bundles, added in [("THRUSTER_COLUMNS", thrusters, bundles_of, []),
+                                        ("REPLACE_COLUMNS", replace, {}, weapon_rows)]:
+        assert not set(added) & set(table.rows), f"{name}: rows {sorted(set(added) & set(table.rows))} exist"
+        entries = []
+        for row in sorted([*table.rows, *added]):
+            values = []
             for k, t in enumerate(CUSTOM_TYPES_STOCK):
-                column = f"sfxId{FIRST_CUSTOM_TYPE + k}"
-                assert table.get(row, column) == -1, f"{os.path.basename(table.path)} row {row}: {column} in use"
-                sfx = bundles[row][k] if row in bundles else effect_for(table, row, t)
-                if sfx != -1:
-                    table.set(row, column, other_bundles.get(sfx, sfx))
-        table.save()
+                if row in table.rows:
+                    assert table.get(row, f"sfxId{FIRST_CUSTOM_TYPE + k}") == -1, f"{name} row {row}: column in use"
+                sfx = bundles[row][k] if row in bundles else effect_for(table, row, t) if row in table.rows else row
+                sfx = other_bundles.get(sfx, sfx)
+                values.append(-1 if sfx == row else sfx)
+            if values != [-1] * len(values):
+                entries.append(f"    ({row}, [{', '.join(map(str, values))}]),")
+        lines += [f"const {name}: [(i32, [i32; {len(CUSTOM_TYPES_STOCK)}]); {len(entries)}] = [", *entries, "];", ""]
+    write_generated("effect_table.rs", "\n".join(lines))
+
+    # The DLL's generated tables are written: build it while the archives repack.
+    cargo = subprocess.Popen(["cargo", "+stable", "build", "--release"], cwd=os.path.join(ROOT, "dll"))
+    # If a later step fails, don't leave it compiling (and holding the target dir) after the build exits.
+    atexit.register(lambda: cargo.poll() is None and cargo.kill())
 
     # The THRUSTER row's choices (dll/src/generator.rs FLAME_TYPES): "generator's own" and the custom flame types.
     flame_types = 1 + len(CUSTOM_TYPES_STOCK)
@@ -182,7 +192,6 @@ def main():
     subprocess.run([sys.executable, os.path.join(ROOT, "tools", "build_gfx.py"),
                     os.path.join(args.game, "menu", "02_coloring.gfx"),
                     os.path.join(PACKAGE, "mod", "menu", "02_coloring.gfx")], check=True)
-    shutil.copy(regulation, os.path.join(PACKAGE, "mod"))
     shutil.copy(effects, os.path.join(PACKAGE, "mod", "sfx"))
     os.makedirs(os.path.join(PACKAGE, "mod", "material"))
     shutil.copy(materials, os.path.join(PACKAGE, "mod", "material"))
