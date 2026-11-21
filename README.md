@@ -61,9 +61,10 @@ Everything is stored in the AC's paint data, so it's saved with the AC and carri
   overridden menu files, not this mod (it happens without the DLL too):
   [me3#902](https://github.com/garyttierney/me3/issues/902).
 - The new rows' labels and choices are in English in every language.
-- The package replaces whole game files (the common effects, the material archive, the shader bundle, two menu
-  movies), so it doesn't combine with other mods that replace the same ones. It leaves `regulation.bin` alone, so
-  gameplay mods that ship one work with it.
+- The package replaces three game files: the shader bundle and two menu movies (the Paint screen's and the HUD's).
+  A mod that replaces one of those doesn't combine with it. Everything else it adds goes into files of its own
+  (`regulation.bin`, the common effects and the material archive stay the game's), so gameplay, effect and parts
+  mods work alongside. On your AC, its flames and weapon effects are this mod's tinted copies of the stock ones.
 - The assembly preview shows the stock blades (it's a separate model, not your AC).
 
 ## How it works
@@ -78,6 +79,8 @@ A DLL and a package of game files built from your install. In short:
   weapon effects from tables by the generator's color type; the DLL answers with columns of their own for your AC only.
 - **Tinted copies** ([tinted-copies.md](docs/tinted-copies.md)): those columns play copies of the effects, colored by
   values the DLL serves.
+- **Extra archives** ([extra-archives.md](docs/extra-archives.md)): the copies, models and materials it adds are in
+  archives of its own, which the DLL has the game load next to its own.
 - **Model copies** ([model-copies.md](docs/model-copies.md)): effect models colored by their material get neutral
   copies the tint can color.
 - **Material overrides** ([material-overrides.md](docs/material-overrides.md)): energy blades are a material of the

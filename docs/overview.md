@@ -10,6 +10,7 @@ Armored Core VI 1.09.1; every address is for that exe. The mod is a package of g
 | Effect columns | gives the player's AC its own column in the game's generator-dependent effect tables | [effect-columns.md](effect-columns.md) |
 | Tinted copies | effect copies colored by values the DLL serves | [tinted-copies.md](tinted-copies.md) |
 | Model copies | neutral effect models and materials for the copies | [model-copies.md](model-copies.md) |
+| Extra archives | our effects, models and materials in archives of our own, loaded next to the game's | [extra-archives.md](extra-archives.md) |
 | Material overrides | the player's weapon models' own colors for their shared materials (blades, emissives) | [material-overrides.md](material-overrides.md) |
 | HUD movie | the HUD movie rewritten with the HUD row's colors each sortie | [hud.md](hud.md) |
 
@@ -37,7 +38,7 @@ aren't there.
 the player and paint data pointer chains). One thread (`lib.rs` update loop) applies changed settings every 200 ms.
 Log: `Game\debug-logs\customization_plus.log`.
 
-Hooks (19). The game's Arxan protection puts back code it guards at irregular times, removing hooks, so the me3
+Hooks (21). The game's Arxan protection puts back code it guards at irregular times, removing hooks, so the me3
 profile turns it off (`disable_arxan`).
 
 | Hook | Function | For |
@@ -57,6 +58,8 @@ profile turns it off (`disable_arxan`).
 | `0x1410ff770` | a part model's paint | the player's weapon models' color entries (weapons.rs) |
 | `0x140995870`, `0x140995780` | hit effect dispatchers | note the player's melee hits (hits.rs) |
 | `0x140b9f390` | hit effect list | swaps in the weapon's hit copies (hits.rs) |
+| `0x14129dbf0` | boot material load | loads our material archive (archives.rs) |
+| `0x141260380` | in-game stay load | loads our effect archive (archives.rs) |
 | `0x141609040` | menu movie lookup | the HUD movie each sortie (hud.rs) |
 | `0x1415f40b0` | Scaleform file opener | serves the rewritten HUD movie (hud.rs) |
 
@@ -66,8 +69,8 @@ profile turns it off (`disable_arxan`).
 
 | File | Made from | What changes |
 |---|---|---|
-| `sfx/sfxbnd_commoneffects.ffxbnd.dcx` | the game's (and ALLMIND's effects from `sfxbnd_m30`) | tinted copies and bundles; neutral model copies (`fxr/build_fxrs.mjs`, `tools/models.py`) |
-| `material/allmaterial.matbinbnd.dcx` | the game's | neutral materials for those models (`tools/models.py`) |
+| `sfx/sfxbnd_customizationplus.ffxbnd.dcx` | the game's effects (and ALLMIND's from `sfxbnd_m30`) | ours only: tinted copies and bundles, their resource lists, neutral model copies (`fxr/build_fxrs.mjs`, `tools/models.py`) |
+| `material/customizationplus.matbinbnd.dcx` | the game's materials | ours only: neutral materials for those models (`tools/models.py`) |
 | `shader_d3d12/shaderbdle.shaderbdlebnd.dcx` | the game's | keys on the weapon materials' color params (`tools/shaders.py`; cached in `cache/`, slow to repack) |
 | `menu/02_coloring.gfx` | the Paint movie | the extra rows' clips, their panel, the tall list (`tools/build_gfx.py`) |
 | `menu/01_000_fe.gfx` | the HUD movie | neutral transforms, a table of its colors (`tools/prepare_hud.py`) |

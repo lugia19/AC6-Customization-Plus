@@ -15,8 +15,9 @@
 // Other effects (the core expansions') get the same copies, tinted by the expansion color instead, in a bundle at
 // S + BUNDLE_OFFSET, for every flame type. Melee weapons' effects get the same pair at S + WEAPON_OFFSETS, tinted by
 // their weapon's color, in a bundle at S + WEAPON_BUNDLE_OFFSET; their hit effects too, per weapon (IDs from the input).
-// Usage: node build_fxrs.mjs <unpacked sfxbnd_commoneffects effect dir> <id map json out> <input json>
-//        <unpacked sfxbnd_m30 effect dir> [bundles dir]
+// Usage: node build_fxrs.mjs <unpacked sfxbnd_commoneffects effect dir> <our effect dir> <id map json out>
+//        <input json> <unpacked sfxbnd_m30 effect dir> [bundles dir]
+// (stock effects are read from the first, the copies and bundles written to the second: our own archive)
 // (input: {flames: a list of [combustion, current, Coral] stock FXR IDs, others: a list of stock FXR IDs,
 // weapons: a list of [first external value ID, stock FXR IDs], hits: a list of [first external value ID, [add, remove]
 // offsets, bundle offset, stock FXR IDs], neutralModels: {model: the copies' version of it, whose material has no color
@@ -338,7 +339,7 @@ function makeContinuous(fxr) {
   }
 }
 
-const [effectDir, idMapPath, inputPath, allmindDir, bundlesDir] = process.argv.slice(2)
+const [effectDir, outDir, idMapPath, inputPath, allmindDir, bundlesDir] = process.argv.slice(2)
 const { flames: rows, others, weapons, hits, neutralModels } = JSON.parse(fs.readFileSync(inputPath, 'utf8'))
 const fileName = id => `f${String(id).padStart(9, '0')}.fxr`
 const file = id => path.join(effectDir, fileName(id))
@@ -348,15 +349,15 @@ const sourceFile = id => (isAllmind(id) ? path.join(allmindDir, fileName(id)) : 
 // A path, not fs.readFileSync: small files come back as views into Node's shared buffer pool, which the library
 // reads from the pool's start.
 const read = id => FXR.read(sourceFile(id), Game.ArmoredCore6)
-// The effect dir is a fresh unpack of the game's effects, so an existing file at a new ID is a stock effect. The
-// bundles dir is ours to overwrite.
+// The effect dir is a fresh unpack of the game's effects, so a file there at a new ID is a stock effect. The bundles
+// dir is ours to overwrite.
 const saved = new Set()
 async function save(fxr) {
   if (saved.has(fxr.id)) throw new Error(`${fxr.id} built twice`)
   saved.add(fxr.id)
   if (bundlesDir) return fxr.saveAs(path.join(bundlesDir, fileName(fxr.id)), Game.ArmoredCore6)
-  if (fs.existsSync(file(fxr.id))) throw new Error(`${fxr.id} would overwrite an existing effect`)
-  await fxr.saveAs(file(fxr.id), Game.ArmoredCore6)
+  if (fs.existsSync(file(fxr.id))) throw new Error(`${fxr.id} would clash with an existing effect`)
+  await fxr.saveAs(path.join(outDir, fileName(fxr.id)), Game.ArmoredCore6)
 }
 
 // Every effect a flame type plays, as its kind of copy, and everything it references through proxies (same kind): one

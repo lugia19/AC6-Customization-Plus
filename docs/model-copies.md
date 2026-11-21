@@ -11,5 +11,5 @@ multiply that. The copies ([tinted-copies.md](tinted-copies.md)) use neutral ver
 - WLT 101's blade, 88570 / 88571 (its blade is an effect model, not part of the weapon).
 
 Each is copied as model + 10000 (s8xxxx -> s9xxxx), its material renamed the same way (same length, so the model's
-reference is patched in place), and that material copied into `allmaterial.matbinbnd.dcx` with its colors (and
+reference is patched in place), and that material copied into our material archive ([extra-archives.md](extra-archives.md)) with its colors (and
 `g_GlowScale`) greyed to their luminance, like the copies' own colors. The copies' resource lists point at them.

@@ -12,9 +12,10 @@ TINTED_MATERIAL_MODELS = (83038, 88231, 88232, 88235,
                           88570, 88571)  # WLT 101's blade
 
 
-def make_neutral_models(model_dir, material_dir, witchy):
-    """The neutral versions of TINTED_MATERIAL_MODELS (model -> neutral model): each model copied with its material
-    reference renamed, and that material copied with its colors greyed. Returns the model IDs' mapping."""
+def make_neutral_models(model_dir, material_dir, out_model_dir, out_material_dir, witchy):
+    """The neutral versions of TINTED_MATERIAL_MODELS (model -> neutral model), read from the stock unpacks and written
+    to ours: each model copied with its material reference renamed, and that material copied with its colors greyed.
+    Returns the model IDs' mapping."""
     neutral, materials = {}, []
     for model in TINTED_MATERIAL_MODELS:
         flver = open(os.path.join(model_dir, f"s{model}.flver"), "rb").read()
@@ -24,10 +25,13 @@ def make_neutral_models(model_dir, material_dir, witchy):
         reference = references.pop()
         renamed = reference[:2] + "9".encode("utf-16-le") + reference[4:]
         neutral[model] = model + 10000
-        open(os.path.join(model_dir, f"s{neutral[model]}.flver"), "wb").write(flver.replace(reference, renamed))
-        source, target = (os.path.join(material_dir, "sfx", name.decode("utf-16-le").replace(".matxml", ".matbin"))
-                          for name in (reference, renamed))
+        target_model = os.path.join(model_dir, f"s{neutral[model]}.flver")
+        assert not os.path.exists(target_model), f"{target_model} exists"
+        open(os.path.join(out_model_dir, f"s{neutral[model]}.flver"), "wb").write(flver.replace(reference, renamed))
+        source, target = (os.path.join(folder, name.decode("utf-16-le").replace(".matxml", ".matbin"))
+                          for folder, name in ((os.path.join(material_dir, "sfx"), reference), (out_material_dir, renamed)))
         if target not in materials:
+            assert not os.path.exists(os.path.join(material_dir, "sfx", os.path.basename(target))), f"{target} exists"
             shutil.copy(source, target)
             materials.append(target)
     witchy(materials, [m + ".xml" for m in materials])

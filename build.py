@@ -2,9 +2,10 @@
 
     python build.py --game "<...>/ARMORED CORE VI FIRES OF RUBICON/Game" --witchy "<...>/WitchyBND.exe"
 
-Needs node/npm, cargo (stable) and WitchyBND 3.x. Writes package/: the mod folder (custom flames and other tinted effects,
-materials, the shader bundle with the weapon colors' keys, the Paint movie with the extra rows, the
-prepared HUD movie), the DLL and the me3 profile. The pieces are in tools/ (params.py, models.py, weapons.py,
+Needs node/npm, cargo (stable) and WitchyBND 3.x. Writes package/: the mod folder (our own effect and material archives, which
+the DLL loads next to the game's: custom flames and other tinted effects, neutral models and materials; the shader
+bundle with the weapon colors' keys, the Paint movie with the extra rows, the prepared HUD movie), the DLL and the me3
+profile. The pieces are in tools/ (params.py, models.py, weapons.py,
 shaders.py, witchy.py, build_gfx.py, prepare_hud.py) and fxr/build_fxrs.mjs. The shader bundle is slow to repack:
 cached in cache/.
 """
@@ -39,6 +40,12 @@ CUSTOM_TYPES_STOCK = (0, 1, 2, 1)
 EXPANSION_ROWS = range(990000, 1000000)
 # Thruster effect rows that stay stock: the exhaust fumes (smoke only, no flame).
 STOCK_FLAME_ROWS = {410031}
+# Our own archives, holding only what we add, loaded by the DLL next to the game's (dll/src/archives.rs names them).
+OWN_EFFECTS = os.path.join("sfx", "sfxbnd_customizationplus.ffxbnd.dcx")
+OWN_MATERIALS = os.path.join("material", "customizationplus.matbinbnd.dcx")
+# The game registers an effect archive's FXRs only up to the first entry ID >= this (0x1403f4540); WitchyBND numbers
+# FXRs 0..N-1, before the other files.
+MAX_EFFECT_ENTRIES = 99999
 
 
 def write_generated(name, text):
@@ -47,6 +54,18 @@ def write_generated(name, text):
     if not os.path.exists(path) or open(path).read() != text:
         open(path, "w", newline="\n").write(text)
         print(f"Updated {path}")
+
+
+def own_archive(path, stock):
+    """An empty unpacked folder for our archive at `path`, shaped like the unpacked stock archive `stock`: its
+    WitchyBND manifest with our file name (WitchyBND packs the folder's files)."""
+    folder = unpacked(path)
+    os.makedirs(folder)
+    manifest = next(f for f in os.listdir(stock) if f.startswith("_witchy"))
+    text = open(os.path.join(stock, manifest), encoding="utf-8-sig").read()
+    stock_name = re.search(r"<filename>(.*?)</filename>", text).group(1)
+    open(os.path.join(folder, manifest), "w", encoding="utf-8-sig").write(text.replace(stock_name, os.path.basename(path)))
+    return folder
 
 
 def main():
@@ -63,10 +82,18 @@ def main():
     regulation = shutil.copy(os.path.join(args.game, "regulation.bin"), WORK)
     effects = shutil.copy(os.path.join(args.game, "sfx", "sfxbnd_commoneffects.ffxbnd.dcx"), WORK)
     materials = shutil.copy(os.path.join(args.game, "material", "allmaterial.matbinbnd.dcx"), WORK)
-    archives = [effects, materials]
-    # Only read: the params, and ALLMIND's thruster effects for the ALLMIND flame type's extras (fxr/build_fxrs.mjs).
+    # Only read: the params, the stock effects and materials (what our copies start from), and ALLMIND's thruster
+    # effects for the ALLMIND flame type's extras (fxr/build_fxrs.mjs).
     allmind = shutil.copy(os.path.join(args.game, "sfx", "sfxbnd_m30.ffxbnd.dcx"), WORK)
-    witchy([*archives, regulation, allmind], [unpacked(a) for a in [*archives, regulation, allmind]])
+    witchy([effects, materials, regulation, allmind], [unpacked(a) for a in [effects, materials, regulation, allmind]])
+    own_effects = os.path.join(WORK, os.path.basename(OWN_EFFECTS))
+    own_materials = os.path.join(WORK, os.path.basename(OWN_MATERIALS))
+    own_effect_folder = own_archive(own_effects, unpacked(effects))
+    own_effect_dir, own_model_dir, own_reslist_dir = (os.path.join(own_effect_folder, sub)
+                                                      for sub in ("effect", "model", "ResourceList"))
+    own_material_dir = os.path.join(own_archive(own_materials, unpacked(materials)), "sfx")
+    for folder in (own_effect_dir, own_model_dir, own_reslist_dir, own_material_dir):
+        os.makedirs(folder)
 
     params = unpacked(regulation)
     # The melee weapons (tools/weapons.py): their parts (only read), their animations and colored materials, what the
@@ -119,11 +146,12 @@ def main():
         subprocess.run(["npm", "install"], cwd=fxr_dir, check=True, shell=shell)
     id_map_path = os.path.join(WORK, "id_map.json")
     input_path = os.path.join(WORK, "fxr_input.json")
-    neutral_models = make_neutral_models(os.path.join(unpacked(effects), "model"), unpacked(materials), witchy)
+    neutral_models = make_neutral_models(os.path.join(unpacked(effects), "model"), unpacked(materials), own_model_dir,
+                                         own_material_dir, witchy)
     weapon_inputs, hit_inputs = weapons.fxr_inputs(weapon_models, weapon_data)
     json.dump({"flames": list(flame_rows.values()), "others": expansion_effects, "weapons": weapon_inputs,
                "hits": hit_inputs, "neutralModels": neutral_models}, open(input_path, "w"))
-    subprocess.run(["node", "build_fxrs.mjs", effect_dir, id_map_path, input_path,
+    subprocess.run(["node", "build_fxrs.mjs", effect_dir, own_effect_dir, id_map_path, input_path,
                     os.path.join(unpacked(allmind), "effect")], cwd=fxr_dir,
                    check=True, shell=shell)
     id_map = json.load(open(id_map_path))
@@ -133,8 +161,9 @@ def main():
     # for the bundles, which only hold proxies).
     reslists = os.path.join(unpacked(effects), "ResourceList")
     for new_id, source_id in id_map["resources"].items():
-        target = os.path.join(reslists, f"f{int(new_id):09d}.ffxreslist")
-        assert not os.path.exists(target), f"{new_id} collides with an existing effect"
+        name = f"f{int(new_id):09d}.ffxreslist"
+        assert not os.path.exists(os.path.join(reslists, name)), f"{new_id} collides with an existing effect"
+        target = os.path.join(own_reslist_dir, name)
         name = f"f{source_id:09d}.ffxreslist"
         source = os.path.join(reslists, name)
         if not os.path.exists(source):  # ALLMIND's effects are in their own bnd
@@ -180,23 +209,22 @@ def main():
     labels = re.search(r"const FLAME_TYPES: \[&str; (\d+)\]", open(os.path.join(ROOT, "dll", "src", "generator.rs")).read())
     assert int(labels.group(1)) == flame_types, f"generator.rs names {labels.group(1)} flame types, the params have {flame_types}"
 
-    witchy([unpacked(a) for a in archives], archives)
+    effect_count = len(os.listdir(own_effect_dir))
+    assert effect_count < MAX_EFFECT_ENTRIES, f"{effect_count} effects: the game registers fewer than {MAX_EFFECT_ENTRIES}"
+    witchy([own_effect_folder, unpacked(own_materials)], [own_effects, own_materials])
     shader_bundle = shaders.patched_bundle(args.game, CACHE, weapons.shader_keys(weapon_colors), witchy)
 
     assert cargo.wait() == 0, "cargo build failed"
 
     shutil.rmtree(PACKAGE, ignore_errors=True)
-    os.makedirs(os.path.join(PACKAGE, "mod", "sfx"))
     os.makedirs(os.path.join(PACKAGE, "mod", "menu"))
     # The Paint movie with the extra rows' clips (dll/src/rows.rs).
     subprocess.run([sys.executable, os.path.join(ROOT, "tools", "build_gfx.py"),
                     os.path.join(args.game, "menu", "02_coloring.gfx"),
                     os.path.join(PACKAGE, "mod", "menu", "02_coloring.gfx")], check=True)
-    shutil.copy(effects, os.path.join(PACKAGE, "mod", "sfx"))
-    os.makedirs(os.path.join(PACKAGE, "mod", "material"))
-    shutil.copy(materials, os.path.join(PACKAGE, "mod", "material"))
-    os.makedirs(os.path.join(PACKAGE, "mod", os.path.dirname(shaders.BUNDLE)))
-    shutil.copy(shader_bundle, os.path.join(PACKAGE, "mod", shaders.BUNDLE))
+    for source, target in [(own_effects, OWN_EFFECTS), (own_materials, OWN_MATERIALS), (shader_bundle, shaders.BUNDLE)]:
+        os.makedirs(os.path.join(PACKAGE, "mod", os.path.dirname(target)), exist_ok=True)
+        shutil.copy(source, os.path.join(PACKAGE, "mod", target))
     # The HUD movie with the table of its colors, for the HUD rows (dll/src/hud_movie.rs).
     subprocess.run([sys.executable, os.path.join(ROOT, "tools", "prepare_hud.py"),
                     os.path.join(args.game, "menu", "01_000_fe.gfx"),
