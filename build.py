@@ -204,10 +204,10 @@ def main():
     # If a later step fails, don't leave it compiling (and holding the target dir) after the build exits.
     atexit.register(lambda: cargo.poll() is None and cargo.kill())
 
-    # The THRUSTER row's choices (dll/src/generator.rs FLAME_TYPES): "generator's own" and the custom flame types.
+    # The THRUSTERS row's choices (dll/src/thrusters.rs FLAME_TYPES): "generator's own" and the custom flame types.
     flame_types = 1 + len(CUSTOM_TYPES_STOCK)
-    labels = re.search(r"const FLAME_TYPES: \[&str; (\d+)\]", open(os.path.join(ROOT, "dll", "src", "generator.rs")).read())
-    assert int(labels.group(1)) == flame_types, f"generator.rs names {labels.group(1)} flame types, the params have {flame_types}"
+    labels = re.search(r"const FLAME_TYPES: \[&str; (\d+)\]", open(os.path.join(ROOT, "dll", "src", "thrusters.rs")).read())
+    assert int(labels.group(1)) == flame_types, f"thrusters.rs names {labels.group(1)} flame types, the params have {flame_types}"
 
     effect_count = len(os.listdir(own_effect_dir))
     assert effect_count < MAX_EFFECT_ENTRIES, f"{effect_count} effects: the game registers fewer than {MAX_EFFECT_ENTRIES}"

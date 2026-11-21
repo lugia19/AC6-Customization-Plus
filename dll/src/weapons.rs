@@ -9,10 +9,10 @@
 //!   when the game paints a model (hook 0x1410ff770).
 //! Colors: the WEAPON VFX row (rows.rs), saved with the AC: every melee weapon has its own color in a paint section no
 //! part uses (WEAPONS' order: section 9's ten color fields, then section 6's; docs/storage.md), and the panel shows the
-//! two equipped
-//! ones: the left-arm melee weapon and the left-back one (melee weapons go nowhere else). A weapon without a color
-//! keeps its stock blade, and its effects get the weapon's default color. On the row the preview flashes the weapons'
-//! units, in the panel the hovered entry's (the highlight hook 0x14102c4c0).
+//! two equipped ones: the left-arm melee weapon and the left-back one (melee weapons go nowhere else). A weapon
+//! without a color keeps its stock blade, and its effects get the weapon's default color. The panel's third entry is
+//! the core expansion's effects' color (one for every expansion; its effects are replace rows too). On the row the
+//! preview flashes the weapons' units, in the panel the hovered weapon's (the highlight hook 0x14102c4c0).
 
 use std::collections::BTreeMap;
 use std::sync::atomic::AtomicUsize;
@@ -58,7 +58,15 @@ const SLOTS: [WeaponSlot; 2] = [
     WeaponSlot { assembly: SLOT_LEFT_ARM, parts: 6, section: 8 },
     WeaponSlot { assembly: SLOT_LEFT_BACK, parts: 7, section: 13 },
 ];
+// The third entry: the expansion color, one for every expansion (so not labelled with one), in section 7's third color
+// field (where the old GENERATOR row kept it), served on 900021 on; the preview flashes nothing for it.
+const EXPANSION_ENTRY: usize = SLOTS.len();
+const EXPANSION_STORAGE: (usize, usize) = (7, 2);
+const EXPANSION_EXT_FIRST: i32 = 900021;
+const EXPANSION_DEFAULT: u32 = 0xFFFFFF;
 static UNIT_SECTIONS: [u8; 2] = [SLOTS[0].section, SLOTS[1].section];
+static EXPANSION_LABEL: [u16; 16] = utf16(b"Expansion color\0");
+static EXPANSION_CHANNELS: Channels = ext_values::unset();
 
 // The AC model object: a model list per parts slot, {+8 up to 16 part models, +0x88 i32 count}. A part model: +0x10 its
 // model item, whose +0x50 is its material param modifier component, +8 the GXMaterialParamModifier.
@@ -174,7 +182,10 @@ fn modifier(model: usize) -> Option<usize> {
 }
 
 pub(crate) fn ext_blocks() -> impl Iterator<Item = Block> {
-    WEAPONS.iter().zip(&CHANNELS).map(|(weapon, channels)| Block { first: EXT_BASE + EXT_BLOCK * i32::from(weapon.model), channels })
+    WEAPONS.iter()
+        .zip(&CHANNELS)
+        .map(|(weapon, channels)| Block { first: EXT_BASE + EXT_BLOCK * i32::from(weapon.model), channels })
+        .chain(std::iter::once(Block { first: EXPANSION_EXT_FIRST, channels: &EXPANSION_CHANNELS }))
 }
 
 /// A color param's entry values: the chosen color, as white as the stock one is (its saturation: the blade needs its
@@ -209,8 +220,11 @@ fn weapon_name(id: i32) -> Option<&'static [u16]> {
     Some(unsafe { std::slice::from_raw_parts(at as *const u16, length + 1) })
 }
 
-/// A color's label in the panel: the name of the melee weapon in its slot.
+/// A color's label in the panel: the name of the melee weapon in its slot, or the expansion color's.
 fn label(which: usize) -> &'static [u16] {
+    if which == EXPANSION_ENTRY {
+        return &EXPANSION_LABEL;
+    }
     equipped(SLOTS[which].assembly).and_then(|weapon| weapon_name(weapon.id)).unwrap_or(&NO_WEAPON)
 }
 
@@ -225,14 +239,22 @@ fn equipped_index(slot: usize) -> Option<usize> {
     WEAPONS.iter().position(|w| w.id == id)
 }
 
-/// The panel's entry `which`: the color of the weapon equipped in its slot.
+/// The expansion's color in the paint block.
+fn expansion_offset() -> usize {
+    rows::color_field(EXPANSION_STORAGE.0, EXPANSION_STORAGE.1)
+}
+
+/// The panel's entry `which`: the color of the weapon equipped in its slot, or the expansion color.
 fn slot(which: usize) -> Option<rows::Slot> {
+    if which == EXPANSION_ENTRY {
+        return Some(rows::Slot { offset: expansion_offset(), default: EXPANSION_DEFAULT });
+    }
     let weapon = equipped_index(SLOTS[which].assembly)?;
     Some(rows::Slot { offset: storage_offset(weapon), default: WEAPONS[weapon].default })
 }
 
 pub(crate) fn claim_row() {
-    rows::claim_dynamic(ROW_WEAPONS, "WEAPON VFX", SLOTS.len(), label, slot);
+    rows::claim_dynamic(ROW_WEAPONS, "WEAPON VFX", SLOTS.len() + 1, label, slot);
 }
 
 /// The colors picked for the player's equipped melee weapons, by model.
@@ -249,12 +271,19 @@ fn current_colors() -> BTreeMap<u16, u32> {
 #[derive(Default)]
 pub(crate) struct Weapons {
     colors: Option<BTreeMap<u16, u32>>,
+    expansion: Option<u32>,
 }
 
 impl Weapons {
-    /// Applies the colors to the effects' external values when they change. The weapon models get theirs when they're
+    /// Applies the colors (the weapons' and the expansion's) to the effects' external values when they change. The weapon models get theirs when they're
     /// built (only AC TEST and sorties show them, which build them).
     pub(crate) fn update(&mut self) {
+        let expansion = rows::picked_at(expansion_offset()).unwrap_or(EXPANSION_DEFAULT);
+        if self.expansion != Some(expansion) {
+            self.expansion = Some(expansion);
+            ext_values::set_channels(&EXPANSION_CHANNELS, expansion);
+            log(&format!("weapons: expansions #{expansion:06X}"));
+        }
         let now = current_colors();
         if self.colors.as_ref() == Some(&now) {
             return;

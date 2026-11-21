@@ -31,20 +31,25 @@ NEW_ROW_DEPTHS = (7, 8, 9)  # free depths in the list sprite
 FIRST_NEW_ROW = 9  # Item_<n>_0
 CONTENT_SPRITE = 269
 STOCK_PANEL_SPRITE = 192
-# The Color / Material panel's items: Item_0_0 color, Item_1_0 material, Item_2_0 Paint Pattern. The rows' panel
-# places color, color, material, color (dll/src/panel.rs adds a row's color, second color, choices, third color in
-# that order).
+# The Color / Material panel's items: Item_0_0 color, Item_1_0 material, Item_2_0 Paint Pattern. The game fills a
+# panel's items with its entries in order, so the extra rows get two panels (dll/src/panel.rs picks one): for rows with
+# a choice, color, color, material, color (a row's color, second color, choices, third color); for rows without one
+# (WEAPON VFX), color, color, color.
 PANEL_COLOR_ITEM = 191
 PANEL_MATERIAL_ITEM = 185
 PANEL_PATTERN_ITEM = 178
-ROWS_PANEL_ITEMS = {PANEL_MATERIAL_ITEM: PANEL_COLOR_ITEM, PANEL_PATTERN_ITEM: PANEL_MATERIAL_ITEM}
 # The fourth item: free depth (the stock items use 10, 22, 36), position one item pitch (2280) below Item_2_0.
 ROWS_PANEL_ITEM_3_DEPTH = 48
 ROWS_PANEL_ITEM_3 = (10900, 8940 + 2280)
-ROWS_PANEL_ID = 402
-ROWS_PANEL_NAME = "Color_Material_Color_Select"
+# (sprite ID, name, depth in the content sprite (free, right above the stock panel's), the stock items it replaces,
+# whether it has a fourth item, a color)
+ROWS_PANELS = [
+    (402, "Color_Material_Color_Select", 119,
+     {PANEL_MATERIAL_ITEM: PANEL_COLOR_ITEM, PANEL_PATTERN_ITEM: PANEL_MATERIAL_ITEM}, True),
+    (406, "Color_Color_Color_Select", 120,
+     {PANEL_MATERIAL_ITEM: PANEL_COLOR_ITEM, PANEL_PATTERN_ITEM: PANEL_COLOR_ITEM}, False),
+]
 STOCK_PANEL_DEPTH = 118  # the Color / Material panel's in the content sprite
-ROWS_PANEL_DEPTH = 119  # free, right above it
 
 # Layout, in twips (20 per pixel at 1080p), list sprite coordinates.
 PANEL_X = (1920, 8820)
@@ -257,34 +262,36 @@ def row_sprite(stock_row, new_id, row_y, slice_top, texture, header):
     return tag(DEFINE_SPRITE, struct.pack("<H", new_id) + frame_count + body)
 
 
-def rows_panel_sprite(stock_panel):
-    """The Color / Material panel sprite (its tag's content) with its items replaced as ROWS_PANEL_ITEMS says, and a
-    fourth item (a color) below them. Its background already reaches past it (sized for the Paint Pattern preview)."""
+def rows_panel_sprite(stock_panel, panel_id, items, fourth):
+    """The Color / Material panel sprite (its tag's content) with its items replaced as `items` says, and with `fourth`
+    a fourth item (a color) below them. Its background already reaches past it (sized for the Paint Pattern
+    preview)."""
     body, swapped = b"", 0
     for tag_type, header, _, raw in tags(stock_panel, 4, len(stock_panel)):
         place = raw[header:]
-        if tag_type == PLACE_OBJECT2 and place[0] & 0x02 and struct.unpack_from("<H", place, 3)[0] in ROWS_PANEL_ITEMS:
-            new = ROWS_PANEL_ITEMS[struct.unpack_from("<H", place, 3)[0]]
+        if tag_type == PLACE_OBJECT2 and place[0] & 0x02 and struct.unpack_from("<H", place, 3)[0] in items:
+            new = items[struct.unpack_from("<H", place, 3)[0]]
             raw = tag(PLACE_OBJECT2, place[:3] + struct.pack("<H", new) + place[5:])
             swapped += 1
-        if tag_type == SHOW_FRAME:
+        if tag_type == SHOW_FRAME and fourth:
             body += tag(PLACE_OBJECT2, bytes([0x26]) + struct.pack("<HH", ROWS_PANEL_ITEM_3_DEPTH, PANEL_COLOR_ITEM)
                         + matrix(*ROWS_PANEL_ITEM_3) + b"Item_3_0\0")
         body += raw
-    assert swapped == len(ROWS_PANEL_ITEMS), "rows panel sprite: an item to replace isn't placed exactly once"
-    return tag(DEFINE_SPRITE, struct.pack("<H", ROWS_PANEL_ID) + stock_panel[2:4] + body)
+    assert swapped == len(items), "rows panel sprite: an item to replace isn't placed exactly once"
+    return tag(DEFINE_SPRITE, struct.pack("<H", panel_id) + stock_panel[2:4] + body)
 
 
-def add_rows_panel(d):
-    """Adds the extra rows' panel to the content sprite. Returns the bytes added."""
+def add_rows_panel(d, panel_id, name, depth, items, fourth):
+    """Adds one of the extra rows' panels (ROWS_PANELS) to the content sprite. Returns the bytes added."""
     stock_pos, stock_header, stock_length = find_sprite(d, STOCK_PANEL_SPRITE)
-    sprite = rows_panel_sprite(bytes(d[stock_pos + stock_header:stock_pos + stock_header + stock_length]))
+    sprite = rows_panel_sprite(bytes(d[stock_pos + stock_header:stock_pos + stock_header + stock_length]), panel_id,
+                               items, fourth)
     content_pos, content_header, content_length = find_sprite(d, CONTENT_SPRITE)
     assert content_header == 6, "content sprite must use the long length form"
     content_tags = list(tags(d, content_pos + content_header + 4, content_pos + content_header + content_length))
     assert all(t in (PLACE_OBJECT2, SHOW_FRAME, END) for t, _, _, _ in content_tags), "content sprite: unexpected tag"
     used_depths = {struct.unpack_from("<H", raw, h + 1)[0] for t, h, _, raw in content_tags if t == PLACE_OBJECT2}
-    assert ROWS_PANEL_DEPTH not in used_depths, "the rows panel's depth is in use in the content sprite"
+    assert depth not in used_depths, "a rows panel's depth is in use in the content sprite"
     # The content sprite places its panels in frame 1 and fades them over the next frames (a color transform per
     # panel per frame): ours gets the Color / Material panel's tags again, at its own depth. Placed visible like the
     # others: the timeline replays (e.g. coming back from the color picker), and a placement that says "invisible"
@@ -294,12 +301,12 @@ def add_rows_panel(d):
         if tag_type != PLACE_OBJECT2 or struct.unpack_from("<H", raw, header + 1)[0] != STOCK_PANEL_DEPTH:
             continue
         place = bytearray(raw[header:])
-        struct.pack_into("<H", place, 1, ROWS_PANEL_DEPTH)
+        struct.pack_into("<H", place, 1, depth)
         if place[0] & 0x02:  # the placement itself: our sprite, our name
             assert place[0] == 0x26, "content sprite: the Color / Material panel's placement has unexpected fields"
-            struct.pack_into("<H", place, 3, ROWS_PANEL_ID)
+            struct.pack_into("<H", place, 3, panel_id)
             name_start = 5 + read_matrix(place, 5)[0]
-            place = place[:name_start] + ROWS_PANEL_NAME.encode() + b"\0"
+            place = place[:name_start] + name.encode() + b"\0"
         new = tag(PLACE_OBJECT2, bytes(place))
         d[pos + len(raw):pos + len(raw)] = new
         added += len(new)
@@ -396,8 +403,10 @@ def main():
     inp, out = sys.argv[1], sys.argv[2]
     d = bytearray(open(inp, "rb").read())
     used = {struct.unpack_from("<H", raw, h)[0] for _, h, _, raw in tags(d, first_tag_pos(d), len(d)) if len(raw) - h >= 2}
-    assert not used & {*NEW_SPRITE_IDS, HEADER_TEXT_ID, ROWS_PANEL_ID, TALL_HOST_ID, TALL_BASE_ID, TALL_OUTLINE_ID}, \
-        "a new character's ID may be in use"
+    new_ids = [*NEW_SPRITE_IDS, HEADER_TEXT_ID, *(panel[0] for panel in ROWS_PANELS), TALL_HOST_ID, TALL_BASE_ID,
+               TALL_OUTLINE_ID]
+    assert len(set(new_ids)) == len(new_ids), "two new characters share an ID"
+    assert not used & set(new_ids), "a new character's ID may be in use"
     _, label_header, label_raw = find_tag(d, DEFINE_EDIT_TEXT, ROW_LABEL_TEXT)
     label_text = label_raw[label_header:]
     row_pos, row_header, row_length = find_sprite(d, ROW_SPRITE)
@@ -435,10 +444,10 @@ def main():
     d[first_frame:first_frame] = places
     struct.pack_into("<I", d, list_pos + 2, list_length + len(places))
     d[list_pos:list_pos] = sprites
-    added = len(sprites) + len(places) + len(entries) + add_rows_panel(d) + add_tall_host(d)
+    added = len(sprites) + len(places) + len(entries) + sum(add_rows_panel(d, *panel) for panel in ROWS_PANELS) + add_tall_host(d)
     struct.pack_into("<I", d, 4, struct.unpack_from("<I", d, 4)[0] + added)
     open(out, "wb").write(d)
-    print(f"{len(NEW_SPRITE_IDS)} rows, their panel and a {TALL_HOST_SLOTS}-item list added, size {added:+d} bytes")
+    print(f"{len(NEW_SPRITE_IDS)} rows, their {len(ROWS_PANELS)} panels and a {TALL_HOST_SLOTS}-item list added, size {added:+d} bytes")
 
 
 if __name__ == "__main__":

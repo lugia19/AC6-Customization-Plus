@@ -43,7 +43,7 @@ lookups answer types 3-6 from it, leaving the rest to the game.
   type.
 
 The hook on `0x140829de0` returns a custom column for the player's character and the stock type for everyone else.
-Which column: the GENERATOR row's flame type ("Generator's own" = 3 + the generator's stock type). So the same
+Which column: the THRUSTERS row's flame type ("Generator's own" = 3 + the generator's stock type). So the same
 generator or weapon on an enemy stays stock, and without the DLL nothing ever asks for columns 3-6.
 
 **Bullets.** Some effects are a bullet's, spawned by plain ID (`0x140698380`), without the table: Assault Armor's

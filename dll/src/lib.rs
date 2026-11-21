@@ -2,7 +2,7 @@
 //! hidden brightness setting, and melee weapon colors.
 //! - Menus: rows.rs (the extra rows: a color, optionally a choice and more colors; saved with the AC), panel.rs (their
 //!   panels, and DEVICE's brightness), ui.rs (the game's menu plumbing they use).
-//! - Features: generator.rs (the GENERATOR row: flames, expansions), hud.rs / hud_movie.rs (the HUD row), weapons.rs
+//! - Features: thrusters.rs (the THRUSTERS row: flames), hud.rs / hud_movie.rs (the HUD row), weapons.rs
 //!   (melee weapon colors: the WEAPON VFX row).
 //! - Shared mechanisms: ext_values.rs (the colors served to the tinted effect copies), columns.rs (the player's own
 //!   columns in the generator-dependent effect tables), archives.rs (our effect and material archives, loaded next to
@@ -29,12 +29,12 @@ mod archives;
 mod columns;
 mod ext_values;
 mod game;
-mod generator;
 mod hits;
 mod hud;
 mod hud_movie;
 mod panel;
 mod rows;
+mod thrusters;
 mod ui;
 mod weapons;
 
@@ -96,10 +96,10 @@ fn install() -> Result<(), String> {
 
 /// Applies the settings whenever they change: the rows' values, the weapon colors.
 fn update_loop() {
-    let mut generator = generator::Generator::new();
+    let mut thrusters = thrusters::Thrusters::new();
     let mut weapons = weapons::Weapons::default();
     loop {
-        generator.update();
+        thrusters.update();
         weapons.update();
         std::thread::sleep(UPDATE_INTERVAL);
     }
@@ -115,10 +115,10 @@ fn init() {
         let _ = LOG.set(Mutex::new(f));
     }
     // Before the hooks go live: a Paint list built after that has them, and the external values are served.
-    generator::claim_row();
+    thrusters::claim_row();
     hud::claim_row();
     weapons::claim_row();
-    ext_values::register(generator::ext_blocks().chain(weapons::ext_blocks()).collect());
+    ext_values::register(thrusters::ext_blocks().chain(weapons::ext_blocks()).collect());
     match install() {
         Ok(()) => {
             log("hooks installed");

@@ -28,10 +28,13 @@ const DEVICE_MATERIALS: std::ops::Range<u32> = 90..100;
 const MATERIAL_ROW_GLOW_OFFSET: usize = 8;
 static ORIG_MATERIAL_TEXT: AtomicUsize = AtomicUsize::new(0);
 
-// The rows' panel clip, in the Paint screen's MainContent clip (its handle at screen + 0x1da0). At screen setup
-// (0x140f3fd90) the game looks its three panel clips up there by name and hides them; the setup hook does the same for
-// ours (placed visible in the movie like the stock ones: the MainContent timeline replays its placements).
+// The rows' panel clips, in the Paint screen's MainContent clip (its handle at screen + 0x1da0): items color, color,
+// material, color for rows with a choice; color, color, color for rows without (the game fills a panel's items in
+// order; tools/build_gfx.py). At screen setup (0x140f3fd90) the game looks its three panel clips up there by name and
+// hides them; the setup hook does the same for ours (placed visible in the movie like the stock ones: the MainContent
+// timeline replays its placements).
 const ROWS_PANEL_NAME: &std::ffi::CStr = c"Color_Material_Color_Select";
+const COLORS_PANEL_NAME: &std::ffi::CStr = c"Color_Color_Color_Select";
 const SCREEN_MAIN_CONTENT_OFFSET: usize = 0x1da0;
 static ORIG_SET_UP_PANELS: AtomicUsize = AtomicUsize::new(0);
 
@@ -67,7 +70,9 @@ unsafe extern "system" fn set_up_panels_impl(list: usize, content: usize, screen
     let result = unsafe { orig::<SetUpPanelsFn>(&ORIG_SET_UP_PANELS)(list, content, screen, a4) };
     PANEL_STATE.store(list, Ordering::Relaxed);
     unsafe {
-        with_clip(screen + SCREEN_MAIN_CONTENT_OFFSET, ROWS_PANEL_NAME, |panel| panel.set_visible(false));
+        for name in [ROWS_PANEL_NAME, COLORS_PANEL_NAME] {
+            with_clip(screen + SCREEN_MAIN_CONTENT_OFFSET, name, |panel| panel.set_visible(false));
+        }
         // Hidden like the game's list hosts (0x140f344c0); the list window shows its host when it opens.
         with_root(entries_screen(list), |root| with_clip(root, TALL_LIST_HOST_NAME, |host| host.set_visible(false)));
     }
@@ -383,12 +388,13 @@ pub(crate) unsafe fn build(list: usize, row: Option<usize>) -> usize {
         let mut clip = Handle::new();
         match row {
             Some(row) => {
-                if !clip.find(paint_screen + SCREEN_MAIN_CONTENT_OFFSET, ROWS_PANEL_NAME) {
+                let name = if rows::choices(row).is_some() { ROWS_PANEL_NAME } else { COLORS_PANEL_NAME };
+                if !clip.find(paint_screen + SCREEN_MAIN_CONTENT_OFFSET, name) {
                     log("the Paint movie has no panel for the extra rows (another mod's 02_coloring.gfx?): no panel");
                     clip.destroy();
                     return 0;
                 }
-                // In the clip's order: color, color, material, color (tools/build_gfx.py).
+                // In the clip's order: color, color, then the choice (if any), color.
                 let color_header = match rows::color_name(row) {
                     Some(name) => labels[0].set(name),
                     None => labels[0].set_game_text(COLOR_TEXT),

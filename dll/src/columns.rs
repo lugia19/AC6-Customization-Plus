@@ -3,7 +3,7 @@
 //! effect tables by 0x140829de0 `int color_type(chr_module)`, the generator's thrustersColorType of the character at
 //! [chr_module + 8]. For the player's character the hook returns a custom column instead (build.py: 3 combustion,
 //! 4 current, 5 Coral, 6 ALLMIND), which plays the tinted copies; everyone else keeps their stock type. Which custom
-//! column: the GENERATOR row's flame type (generator.rs).
+//! column: the THRUSTERS row's flame type (thrusters.rs).
 //!
 //! The custom columns aren't in the regulation (it stays stock): the tables' only readers, their lookups
 //! `int lookup(color_type, row)` (0x1415cdd90 ThrustersSfxIdParam_PC, 0x1415ce050 GeneratorTypeSfxIdRplace_PC; the

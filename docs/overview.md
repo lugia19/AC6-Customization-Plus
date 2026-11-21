@@ -18,9 +18,9 @@ Armored Core VI 1.09.1; every address is for that exe. The mod is a package of g
 
 | Feature | Uses |
 |---|---|
-| GENERATOR: thruster color, flame type | Paint UI, storage, effect columns (the flame type is the column), tinted copies |
-| GENERATOR: expansion color | the same; Assault Armor's blast through the bullet effect hook; neutral model copies |
-| GENERATOR: accent color (ALLMIND type) | tinted copies (the fade) |
+| THRUSTERS: thruster color, flame type | Paint UI, storage, effect columns (the flame type is the column), tinted copies |
+| THRUSTERS: accent color (ALLMIND type) | tinted copies (the fade) |
+| WEAPON VFX: expansion color | Paint UI, storage, effect columns, tinted copies; Assault Armor's blast through the bullet effect hook; neutral model copies |
 | HUD: color, warning color, opacity | Paint UI, storage, HUD movie |
 | DEVICE's brightness | Paint UI only: the game's own materials and menus |
 | WEAPON VFX: effects | Paint UI, storage, effect columns, tinted copies (light waves through the bullet hook) |
@@ -34,7 +34,7 @@ aren't there.
 ## The DLL
 
 `dll/src`, by mechanism: `rows.rs`, `panel.rs`, `ui.rs` (Paint UI); `ext_values.rs` (served values), `columns.rs`
-(effect columns); `generator.rs`, `hud.rs` / `hud_movie.rs`, `weapons.rs`, `hits.rs` (features); `game.rs` (memory helpers,
+(effect columns); `thrusters.rs`, `hud.rs` / `hud_movie.rs`, `weapons.rs`, `hits.rs` (features); `game.rs` (memory helpers,
 the player and paint data pointer chains). One thread (`lib.rs` update loop) applies changed settings every 200 ms.
 Log: `Game\debug-logs\customization_plus.log`.
 

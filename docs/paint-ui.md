@@ -169,9 +169,11 @@ never show a hidden child again (a hidden material icon stayed hidden in every p
   (`_02_Coloring_fla.Item_x_x__62`). Its frame scripts stop the row's animations; without the class a copy loops
   through all its frames (it flickers) as soon as the game plays its grey-out animation, which it does while another
   row is being edited.
-- **Panel clip.** The rows' panel is its own clip, `Color_Material_Color_Select`, a copy of the Color / Material panel
-  with items color, color, material, color (`Item_3_0` added below the others), placed visible like the stock panels
-  (the MainContent timeline replays its placements when a sub-window closes) and hidden at screen setup
+- **Panel clips.** The game fills a panel's items with its entries in order, so the rows get two clips, copies of the
+  Color / Material panel: `Color_Material_Color_Select` with items color, color, material, color (`Item_3_0` added
+  below the others) for rows with a choice, and `Color_Color_Color_Select` with color, color, color for rows without
+  one (WEAPON VFX: its third color on a material item would show no swatch). Both are placed visible like the stock
+  panels (the MainContent timeline replays its placements when a sub-window closes) and hidden at screen setup
   (`0x140f3fd90`, where the game hides its own three).
 - **Tall list.** The stock list host `Text_ItemList` shows 3 items. `Text_ItemList_Tall` is a copy with 11 item
   slots: its `Base` has one frame per item count (the game picks clamp(count, 1, frames) in `0x140c76730`), frames

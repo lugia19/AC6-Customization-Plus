@@ -30,8 +30,9 @@ const ROW_COUNT: usize = 3;
 // 8 WEATHERING).
 const FIRST_KIND: u32 = 9;
 // Where a row keeps its values, whichever part is selected (docs/storage.md): a paint section no part uses, its
-// colors from one of the section's colors on, its choice in one of its materials. GENERATOR and HUD share section 7;
-// WEAPON VFX (a dynamic row) says where each weapon's color is itself, in sections 9 and 6.
+// colors from one of the section's colors on, its choice in one of its materials. THRUSTERS and HUD share section 7;
+// WEAPON VFX (a dynamic row) says where each entry's color is itself: the weapons' in sections 9 and 6, the
+// expansion's in section 7's third color.
 struct Storage {
     section: usize,
     first_color: usize,

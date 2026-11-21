@@ -18,10 +18,9 @@ More to customize in Armored Core VI's Paint screen (1.09.1), saved with each AC
 2. In the garage, Paint: below WEATHERING there's a new panel, ENTIRE AC, with three rows. Each is one setting for
    the whole AC, whichever part tab is open. Confirming a row opens its panel, like MAIN's Color / Material.
 
-**GENERATOR**: a thruster color, an accent color, a flame type and an expansion color. Until you pick a color, it's
-white. Dark colors work too: the flames darken what's behind them instead of glowing. The accent color is for the
-ALLMIND type; the expansion color is your core expansion's (its effects follow the flame type: the Coral type gets the
-Coral version). The types:
+**THRUSTERS**: a thruster color, an accent color and a flame type. Until you pick a color, it's white. Dark colors
+work too: the flames darken what's behind them instead of glowing. The accent color is for the ALLMIND type. The
+types:
 - **Generator's own** (the default): the flames of the generator you have equipped.
 - **Combustion**, **Current**, **Coral**: the game's three kinds of flame. They differ in shape and detail, not only
   in color: Current has its own flame model, Coral adds sparkles and haze.
@@ -44,13 +43,16 @@ panel with its color and a Brightness entry, which opens the game's own material
 intensities (Brightness 10% to 450%), per part like any material. NPC ACs use them; the stock menu just never let you reach
 them.
 
-**WEAPON VFX** is for your melee weapons: its panel shows the melee weapon on your left arm and the one in your left
-weapon bay, each with its color; like the game's own rows, the preview flashes the weapon you're on. Every melee weapon
+**WEAPON VFX** is for your melee weapons and your core expansion: its panel shows the melee weapon on your left arm
+and the one in your left weapon bay, each with its color, and the expansion color; like the game's own rows, the
+preview flashes the weapon you're on. Every melee weapon
 keeps its own color on the AC, so swapping weapons shows each one's color, and dark colors work as they do for the
 thrusters. Covered: the energy blades (HI-32: BU-TT/A, Vvc-770LB, WLT 101, VP-67LD, MOONLIGHT, ML-REDSHIFT,
 Vvc-774LS, VE-67LLA: blade or glow and effects, light waves included), the HMMR plasma thrower (its chain and effects)
 and the VP-67EB stun baton (effects). Only your AC changes; enemies with the same weapon keep the stock look. Without a
-color, a weapon keeps its stock look, and its effects get a color close to their stock one.
+color, a weapon keeps its stock look, and its effects get a color close to their stock one. The expansion color is
+one for all of Assault Armor, Pulse Armor, Pulse Protection and Terminal Armor (white until you pick one); their
+effects follow the thrusters' flame type, so the Coral type gets the Coral versions.
 
 Everything is stored in the AC's paint data, so it's saved with the AC and carried by designs.
 

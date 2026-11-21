@@ -1,7 +1,7 @@
 profileVersion = "v1"
 
-# Customization Plus: more to set in the Paint screen (thruster color and flame type, expansion color, HUD colors and
-# opacity, light brightness, melee weapon colors).
+# Customization Plus: more to set in the Paint screen (thruster color and flame type, HUD colors and opacity, light
+# brightness, melee weapon and expansion colors).
 # Paths are relative to this file (the package folder build.py writes).
 
 # Modded play uses its own save: me3 copies the real save to this file on first launch and never touches the original.
