@@ -13,8 +13,8 @@
 //! - 0x140829de0 a character's generator color type, 0x140698380 the bullet effect spawn and 0x1408f0190 the muzzle
 //!   flash spawn, in columns.rs.
 //! - 0x141609040 menu movie lookup and 0x1415f40b0 the Scaleform file opener: the HUD's look, in hud.rs.
-//! - 0x1410d8460 AC parts loader and 0x1415d0080 part name builder: the player's blade parts' copies; 0x14102c4c0 the
-//!   Paint preview's highlight: WEAPON VFX flashes the weapons; in weapons.rs.
+//! - 0x1410ff770 a part model's paint: the player's weapon models' color entries; 0x14102c4c0 the Paint preview's
+//!   highlight: WEAPON VFX flashes the weapons; in weapons.rs.
 //! - 0x140995870 / 0x140995780 hit effect dispatchers and 0x140b9f390 the hit effect list: the player's melee hits'
 //!   tinted copies, in hits.rs.
 //! The game's Arxan protection restores code it guards to its original bytes at irregular times, silently removing
@@ -93,7 +93,7 @@ fn install() -> Result<(), String> {
 /// Applies the settings whenever they change: the rows' values, the weapon colors.
 fn update_loop() {
     let mut generator = generator::Generator::new();
-    let mut weapons = weapons::Weapons::new();
+    let mut weapons = weapons::Weapons::default();
     loop {
         generator.update();
         weapons.update();

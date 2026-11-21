@@ -66,8 +66,8 @@ Coming from 0.1.0 (AC6-Thruster-Customization)? The save file has a new name: re
   overridden menu files, not this mod (it happens without the DLL too):
   [me3#902](https://github.com/garyttierney/me3/issues/902).
 - The new rows' labels and choices are in English in every language.
-- The package replaces whole game files (`regulation.bin`, the common effects, the material archive, two menu
-  movies), so it doesn't combine with other mods that replace the same ones.
+- The package replaces whole game files (`regulation.bin`, the common effects, the material archive, the shader
+  bundle, two menu movies), so it doesn't combine with other mods that replace the same ones.
 - The assembly preview shows the stock blades (it's a separate model, not your AC).
 
 ## How it works
@@ -82,8 +82,11 @@ A DLL and a package of game files built from your install. In short:
   weapon effects from tables by the generator's color type; the DLL answers with columns of their own for your AC only.
 - **Tinted copies** ([tinted-copies.md](docs/tinted-copies.md)): those columns play copies of the effects, colored by
   values the DLL serves.
-- **Model copies** ([model-copies.md](docs/model-copies.md)): energy blades are a material of the weapon's model, so
-  your AC loads a copy of the weapon with its own material, whose colors the DLL sets.
+- **Model copies** ([model-copies.md](docs/model-copies.md)): effect models colored by their material get neutral
+  copies the tint can color.
+- **Material overrides** ([material-overrides.md](docs/material-overrides.md)): energy blades are a material of the
+  weapon's model, shared by every AC; the DLL gives your weapon models their own colors for it, the way paint colors
+  each AC's parts.
 - **HUD** ([hud.md](docs/hud.md)): each sortie, the DLL hands the game a copy of the HUD movie with every color
   rewritten.
 

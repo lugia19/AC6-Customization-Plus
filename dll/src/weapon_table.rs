@@ -9,52 +9,102 @@ const HIT_BUNDLE_OFFSET: i32 = 60000;
 const WEAPONS: [Weapon; 10] = [
     Weapon {
         id: 20010000, model: 211, variation: 20100, default: 0x99FFFF,
-        materials: &[Material { name: &utf16(b"P[WP_9210]_Laser\0"), colors: &[&utf16(b"P_LaserBlade__001_snp_0_color_10\0"), &utf16(b"P_LaserBlade__001_snp_0_color_12\0"), &utf16(b"P_LaserBlade__001_snp_0_color_13\0"), &utf16(b"P_LaserBlade__001_snp_0_color_6\0"), &utf16(b"P_LaserBlade__001_snp_0_color_8\0")] }],
+        colors: &[
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_10\0"), rgba: [0.782353, 1.0, 0.962383, 1.0], intensity: 12.0 },
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_12\0"), rgba: [1.0, 0.149036, 0.0, 1.0], intensity: 12.0 },
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_13\0"), rgba: [0.0, 0.600066, 0.0, 1.0], intensity: 10.0 },
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_6\0"), rgba: [0.570588, 1.0, 0.841363, 1.0], intensity: 60.0 },
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_8\0"), rgba: [0.529412, 0.999026, 0.981667, 1.0], intensity: 12.0 },
+        ],
         hits: &[260006],
     },
     Weapon {
         id: 20020000, model: 221, variation: 20200, default: 0x4DB3FF,
-        materials: &[Material { name: &utf16(b"P[WP_9220]_Laser\0"), colors: &[&utf16(b"P_LaserBlade__001_snp_0_color_10\0"), &utf16(b"P_LaserBlade__001_snp_0_color_12\0"), &utf16(b"P_LaserBlade__001_snp_0_color_13\0"), &utf16(b"P_LaserBlade__001_snp_0_color_6\0"), &utf16(b"P_LaserBlade__001_snp_0_color_8\0")] }],
+        colors: &[
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_10\0"), rgba: [0.505882, 0.759125, 1.0, 1.0], intensity: 40.0 },
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_12\0"), rgba: [1.0, 0.149036, 0.0, 1.0], intensity: 12.0 },
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_13\0"), rgba: [0.0, 0.600066, 0.0, 1.0], intensity: 10.0 },
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_6\0"), rgba: [0.270588, 0.499307, 1.0, 1.0], intensity: 60.0 },
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_8\0"), rgba: [0.3, 0.643478, 1.0, 1.0], intensity: 24.0 },
+        ],
         hits: &[250006],
     },
     Weapon {
         id: 20000100, model: 230, variation: 20010, default: 0xFF4D4D,
-        materials: &[Material { name: &utf16(b"P[WP_9230]_LB_Emissive_Glow\0"), colors: &[&utf16(b"P_Laser__Emissive_Glow_snp_0_color_0\0"), &utf16(b"P_Laser__Emissive_Glow_snp_0_color_4\0"), &utf16(b"P_Laser__Emissive_Glow_snp_0_color_6\0"), &utf16(b"P_Laser__Emissive_Glow_snp_0_color_2\0")] }],
+        colors: &[
+            Color { name: &utf16(b"CP_P_Laser__Emissive_Glow_snp_0_color_0\0"), rgba: [1.0, 0.629568, 0.405882, 1.0], intensity: 2.0 },
+            Color { name: &utf16(b"CP_P_Laser__Emissive_Glow_snp_0_color_4\0"), rgba: [0.956203, 0.489985, 0.455603, 1.0], intensity: 1.0 },
+            Color { name: &utf16(b"CP_P_Laser__Emissive_Glow_snp_0_color_6\0"), rgba: [0.935295, 0.0, 0.237799, 1.0], intensity: 1.0 },
+            Color { name: &utf16(b"CP_P_Laser__Emissive_Glow_snp_0_color_2\0"), rgba: [0.976008, 0.292802, 0.292802, 1.0], intensity: 1.0 },
+        ],
         hits: &[265006],
     },
     Weapon {
         id: 20040000, model: 241, variation: 20400, default: 0x4DB3FF,
-        materials: &[Material { name: &utf16(b"P[WP_9240]_Laser\0"), colors: &[&utf16(b"P_LaserBlade__001_snp_0_color_15\0"), &utf16(b"P_LaserBlade__001_snp_0_color_10\0"), &utf16(b"P_LaserBlade__001_snp_0_color_12\0"), &utf16(b"P_LaserBlade__001_snp_0_color_13\0"), &utf16(b"P_LaserBlade__001_snp_0_color_6\0"), &utf16(b"P_LaserBlade__001_snp_0_color_8\0")] }],
+        colors: &[
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_10\0"), rgba: [0.505882, 0.759125, 1.0, 1.0], intensity: 40.0 },
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_12\0"), rgba: [1.0, 0.149036, 0.0, 1.0], intensity: 12.0 },
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_13\0"), rgba: [0.0, 0.600066, 0.0, 1.0], intensity: 10.0 },
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_6\0"), rgba: [0.270588, 0.499307, 1.0, 1.0], intensity: 60.0 },
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_8\0"), rgba: [0.3, 0.643478, 1.0, 1.0], intensity: 24.0 },
+        ],
         hits: &[250006, 273006],
     },
     Weapon {
         id: 20000200, model: 250, variation: 20020, default: 0x80FFCC,
-        materials: &[Material { name: &utf16(b"P[WP_9250]_Laser\0"), colors: &[&utf16(b"P_LaserBlade__001_snp_0_color_15\0"), &utf16(b"P_LaserBlade__001_snp_0_color_10\0"), &utf16(b"P_LaserBlade__001_snp_0_color_12\0"), &utf16(b"P_LaserBlade__001_snp_0_color_13\0"), &utf16(b"P_LaserBlade__001_snp_0_color_6\0"), &utf16(b"P_LaserBlade__001_snp_0_color_8\0")] }],
+        colors: &[
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_10\0"), rgba: [0.26176, 0.82406, 0.777202, 1.0], intensity: 40.0 },
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_12\0"), rgba: [0.0, 0.959133, 1.0, 1.0], intensity: 12.0 },
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_13\0"), rgba: [0.0, 0.600066, 0.0, 1.0], intensity: 10.0 },
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_6\0"), rgba: [0.355101, 0.826948, 0.53791, 1.0], intensity: 20.0 },
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_8\0"), rgba: [0.139563, 0.928681, 0.949026, 1.0], intensity: 24.0 },
+        ],
         hits: &[273006, 273007],
     },
     Weapon {
         id: 20000300, model: 251, variation: 20030, default: 0xFF4D4D,
-        materials: &[Material { name: &utf16(b"P[WP_9251]_Laser\0"), colors: &[&utf16(b"P_LaserBlade__001_snp_0_color_15\0"), &utf16(b"P_LaserBlade__001_snp_0_color_10\0"), &utf16(b"P_LaserBlade__001_snp_0_color_12\0"), &utf16(b"P_LaserBlade__001_snp_0_color_13\0"), &utf16(b"P_LaserBlade__001_snp_0_color_6\0"), &utf16(b"P_LaserBlade__001_snp_0_color_8\0")] }],
+        colors: &[
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_10\0"), rgba: [1.0, 0.723438, 0.664706, 1.0], intensity: 60.0 },
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_12\0"), rgba: [1.0, 0.24325, 0.158824, 1.0], intensity: 60.0 },
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_13\0"), rgba: [1.0, 0.0, 0.0, 1.0], intensity: 10.0 },
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_6\0"), rgba: [1.0, 0.350891, 0.276471, 1.0], intensity: 60.0 },
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_8\0"), rgba: [1.0, 0.331573, 0.317647, 1.0], intensity: 30.0 },
+        ],
         hits: &[265006, 265007],
     },
     Weapon {
         id: 20030000, model: 411, variation: 20300, default: 0x66CCFF,
-        materials: &[Material { name: &utf16(b"P[WP_9410]_Laser\0"), colors: &[&utf16(b"P_LaserBlade__001_snp_0_color_15\0"), &utf16(b"P_LaserBlade__001_snp_0_color_10\0"), &utf16(b"P_LaserBlade__001_snp_0_color_12\0"), &utf16(b"P_LaserBlade__001_snp_0_color_13\0"), &utf16(b"P_LaserBlade__001_snp_0_color_6\0"), &utf16(b"P_LaserBlade__001_snp_0_color_8\0")] }],
+        colors: &[
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_10\0"), rgba: [0.505882, 0.759125, 1.0, 1.0], intensity: 40.0 },
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_12\0"), rgba: [1.0, 0.149036, 0.0, 1.0], intensity: 12.0 },
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_13\0"), rgba: [0.0, 0.600066, 0.0, 1.0], intensity: 10.0 },
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_6\0"), rgba: [0.270588, 0.499307, 1.0, 1.0], intensity: 60.0 },
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_8\0"), rgba: [0.3, 0.643478, 1.0, 1.0], intensity: 24.0 },
+        ],
         hits: &[250006, 273006],
     },
     Weapon {
         id: 20050000, model: 610, variation: 20500, default: 0x4DB3FF,
-        materials: &[Material { name: &utf16(b"P[WP_9610]_Laser\0"), colors: &[&utf16(b"P_LaserBlade__001_snp_0_color_15\0"), &utf16(b"P_LaserBlade__001_snp_0_color_10\0"), &utf16(b"P_LaserBlade__001_snp_0_color_12\0"), &utf16(b"P_LaserBlade__001_snp_0_color_13\0"), &utf16(b"P_LaserBlade__001_snp_0_color_6\0"), &utf16(b"P_LaserBlade__001_snp_0_color_8\0")] }],
+        colors: &[
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_10\0"), rgba: [0.505882, 0.759125, 1.0, 1.0], intensity: 40.0 },
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_12\0"), rgba: [1.0, 0.149036, 0.0, 1.0], intensity: 12.0 },
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_13\0"), rgba: [0.0, 0.600066, 0.0, 1.0], intensity: 10.0 },
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_6\0"), rgba: [0.270588, 0.499307, 1.0, 1.0], intensity: 60.0 },
+            Color { name: &utf16(b"CP_P_LaserBlade__001_snp_0_color_8\0"), rgba: [0.3, 0.643478, 1.0, 1.0], intensity: 24.0 },
+        ],
         hits: &[250006],
     },
     Weapon {
         id: 20090000, model: 910, variation: 20900, default: 0xFFCC4D,
-        materials: &[],
+        colors: &[],
         hits: &[257006],
     },
     Weapon {
         id: 20070000, model: 1210, variation: 20700, default: 0x7766FF,
-        materials: &[Material { name: &utf16(b"P[WP_8210]_Plasmawire\0"), colors: &[&utf16(b"P_ACParts__Plasma_spinner__Emissive_Glow_snp_0_color_0\0"), &utf16(b"P_ACParts__Plasma_spinner__Emissive_Glow_snp_0_color_3\0")] }],
+        colors: &[
+            Color { name: &utf16(b"CP_P_ACParts__Plasma_spinner__Emissive_Glow_snp_0_color_0\0"), rgba: [0.537648, 0.405882, 1.0, 1.0], intensity: 2.0 },
+            Color { name: &utf16(b"CP_P_ACParts__Plasma_spinner__Emissive_Glow_snp_0_color_3\0"), rgba: [0.570572, 0.513782, 1.0, 1.0], intensity: 60.0 },
+        ],
         hits: &[255000, 255005, 255006],
     },
 ];

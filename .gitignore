@@ -1,5 +1,6 @@
 # Build output (build.py)
 /build/
+/cache/
 /package/
 /dll/target*/
 /fxr/node_modules/

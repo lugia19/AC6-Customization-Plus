@@ -1,21 +1,21 @@
 """WEAPON VFX's build side: the melee weapons' effects, hit effects and colored materials, derived from the game's data,
-the part copies the player's AC loads, and the DLL's table of them (dll/src/weapon_table.rs, generated)."""
+the shader keys their colors get, and the DLL's table of them (dll/src/weapon_table.rs, generated)."""
 import glob
 import os
-import re
 import shutil
 import struct
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 
 from tools.params import Param
+from tools.shaders import key
 from tools.witchy import unpacked
 
 
 @dataclass
 class Weapon:
     """What the game data doesn't say: the default color of its effects (0xRRGGBB), its part's colored materials (blades,
-    emissives; fixed colors, so the player's AC loads a copy of the part with copies of them), and effects to leave
+    emissives: the player's weapon model gets entries for their colors, docs/material-overrides.md), and effects to leave
     stock ({id: why})."""
     id: int  # EquipParamWeapon
     default: int
@@ -70,20 +70,9 @@ ATK_MATERIAL_OF_WEAPON = 255
 IRON = 0
 
 
-def player_copy(name):
-    """A weapon part / texture / material name -> its copy's (same length): the model number's leading digit d ->
-    9 - d (0221 -> 9221, 1210 -> 8210; no stock weapon model is 8000-8949 or 9014-9999)."""
-    copy = re.sub(r"(?i)(wp_(?:l_)?)([01])(\d{3})", lambda m: m[1] + str(9 - int(m[2])) + m[3], name, count=1)
-    assert copy != name, f"no model number in {name}"
-    return copy
-
-
-def rename_in_file(path, renames):
-    """Same-length renames inside a binary file, as UTF-16."""
-    data = open(path, "rb").read()
-    for old, new in renames:
-        data = data.replace(old.encode("utf-16-le"), new.encode("utf-16-le"))
-    open(path, "wb").write(data)
+def entry_name(param):
+    """The name our entries for a shader color param go by; its key (shaders.key) goes on the param in the shader."""
+    return "CP_" + param
 
 
 def models(regulation, defs):
@@ -93,18 +82,8 @@ def models(regulation, defs):
 
 
 def copy_weapon_parts(game, work, model_ids):
-    """Copies, for unpacking: every weapon's part (its animations are read), and the LODs of those the player's AC loads a
-    copy of. Returns the parts to copy (part + LOD) and the others."""
-    copy = lambda name: shutil.copy(os.path.join(game, "parts", name), work)  # noqa: E731
-    copied, read_only = [], []
-    for weapon, model in zip(WEAPONS, model_ids):
-        if weapon.materials:
-            taken = glob.glob(os.path.join(game, "parts", f"*{player_copy(f'wp_{model:04d}')[3:]}*"))
-            assert not taken, f"weapon {weapon.id}: its copy's model number is taken by {taken}"
-            copied += [copy(f"wp_l_{model:04d}{suffix}.partsbnd.dcx") for suffix in ("", "_l")]
-        else:
-            read_only.append(copy(f"wp_l_{model:04d}.partsbnd.dcx"))
-    return copied, read_only
+    """Copies every weapon's part, for unpacking (its animations are read)."""
+    return [shutil.copy(os.path.join(game, "parts", f"wp_l_{model:04d}.partsbnd.dcx"), work) for model in model_ids]
 
 
 def animation_bundles(parts):
@@ -115,32 +94,6 @@ def animation_bundles(parts):
 def material_files(material_dir):
     """Every listed material's matbin, for reading its parameters."""
     return [os.path.join(material_dir, "Parts", name + ".matbin") for weapon in WEAPONS for name in weapon.materials]
-
-
-def make_weapon_copies(game, work, parts, model_ids, material_dir):
-    """The copies of the unpacked `parts`: their colored material references and file names renamed, the materials and
-    textures copied. Returns the part files the repack writes, and the texture copies."""
-    for weapon, model in zip(WEAPONS, model_ids):
-        renames = [(material, player_copy(material)) for material in weapon.materials]
-        for part in [p for p in parts if os.path.basename(p).startswith(f"wp_l_{model:04d}")]:
-            folder = unpacked(part)
-            for flver in [f for f in os.listdir(folder) if f.lower().endswith(".flver")]:
-                rename_in_file(os.path.join(folder, flver), renames)
-            manifest = os.path.join(folder, "_witchy-bnd4.xml")
-            text = open(manifest, encoding="utf-8-sig").read()
-            name = os.path.basename(part)
-            assert f"<filename>{name}</filename>" in text, f"{manifest}: unexpected file name"
-            open(manifest, "w", encoding="utf-8-sig").write(text.replace(name, player_copy(name)))
-        # A material names itself once, in its source path.
-        for material, copy_name in renames:
-            copy = shutil.copy(os.path.join(material_dir, "Parts", material + ".matbin"),
-                               os.path.join(material_dir, "Parts", copy_name + ".matbin"))
-            rename_in_file(copy, [(material, copy_name)])
-    built = [os.path.join(work, player_copy(os.path.basename(p))) for p in parts]
-    textures = [shutil.copy(os.path.join(game, "parts", name), os.path.join(work, player_copy(name)))
-                for weapon, model in zip(WEAPONS, model_ids) if weapon.materials
-                for name in (f"wp_{model:04d}{suffix}.tpf.dcx" for suffix in ("", "_l"))]
-    return built, textures
 
 
 # ---- what each weapon's data says -------------------------------------------------------------------------------------
@@ -245,15 +198,36 @@ def derive(regulation, defs, effect_dir, model_ids, anibnds):
 
 
 def material_colors(material_dir):
-    """Each listed material's color parameters (a matbin converted to XML: its Float4 / Float5 params named color)."""
-    colors = {}
+    """Each weapon's colors: its materials' color params (a matbin converted to XML: its Float5 params named color,
+    r g b a intensity), as (shader, param, rgba, intensity). Those at intensity 0 add no light: left stock (overriding
+    one, like the blades' color_15, breaks the blade)."""
+    colors = []
     for weapon in WEAPONS:
+        own = []
         for name in weapon.materials:
             root = ET.parse(os.path.join(material_dir, "Parts", name + ".matbin.xml")).getroot()
-            colors[name] = [p.findtext("Name") for p in root.iter("Param")
-                            if p.findtext("Type") in ("Float4", "Float5") and "color" in p.findtext("Name").lower()]
-            assert colors[name], f"{name}: no color parameters"
+            shader = os.path.splitext(root.findtext("ShaderPath"))[0]
+            params = [p for p in root.iter("Param")
+                      if p.findtext("Type") in ("Float4", "Float5") and "color" in p.findtext("Name").lower()]
+            assert all(p.findtext("Type") == "Float5" for p in params), f"{name}: a Float4 color (no intensity)"
+            for p in params:
+                *rgba, intensity = [float(f.text) for f in p.find("Value")]
+                if intensity > 0:
+                    own.append((shader, p.findtext("Name"), rgba, intensity))
+            assert own, f"{name}: no color parameters"
+        # The entries are for all of the weapon model's materials: a param can't be in two of them.
+        assert len({param for _, param, _, _ in own}) == len(own), f"weapon {weapon.id}: a color param in two materials"
+        colors.append(own)
     return colors
+
+
+def shader_keys(colors):
+    """The keys the shader bundle gets: {shader: {param: key}} (tools/shaders.py)."""
+    keys = {}
+    for own in colors:
+        for shader, param, _, _ in own:
+            keys.setdefault(shader, {})[param] = key(entry_name(param))
+    return keys
 
 
 # ---- the DLL's table, and build_fxrs.mjs's input --------------------------------------------------------------------
@@ -274,14 +248,14 @@ def rust_table(model_ids, derived, colors):
         "",
         f"const WEAPONS: [Weapon; {len(WEAPONS)}] = [",
     ]
-    for weapon, model, info in zip(WEAPONS, model_ids, derived):
-        materials = ", ".join(
-            f"Material {{ name: {wide(player_copy(m))}, colors: &[{', '.join(wide(c) for c in colors[m])}] }}"
-            for m in weapon.materials)
+    for weapon, model, info, own in zip(WEAPONS, model_ids, derived, colors):
         lines += [
             "    Weapon {",
             f"        id: {weapon.id}, model: {model}, variation: {info['variation']}, default: 0x{weapon.default:06X},",
-            f"        materials: &[{materials}],",
+            *(["        colors: &[",
+               *[f"            Color {{ name: {wide(entry_name(param))}, rgba: [{', '.join(map(repr, rgba))}], "
+                 f"intensity: {intensity!r} }}," for _, param, rgba, intensity in own],
+               "        ],"] if own else ["        colors: &[],"]),
             f"        hits: &[{', '.join(map(str, info['hits']))}],",
             "    },",
         ]

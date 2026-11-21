@@ -9,7 +9,8 @@ Armored Core VI 1.09.1; every address is for that exe. The mod is a package of g
 | Storage | where the rows keep their values: free sections of the AC's paint data | [storage.md](storage.md) |
 | Effect columns | gives the player's AC its own column in the game's generator-dependent effect tables | [effect-columns.md](effect-columns.md) |
 | Tinted copies | effect copies colored by values the DLL serves | [tinted-copies.md](tinted-copies.md) |
-| Model copies | models and materials made for the copies and for the player's weapons; blade colors set live | [model-copies.md](model-copies.md) |
+| Model copies | neutral effect models and materials for the copies | [model-copies.md](model-copies.md) |
+| Material overrides | the player's weapon models' own colors for their shared materials (blades, emissives) | [material-overrides.md](material-overrides.md) |
 | HUD movie | the HUD movie rewritten with the HUD row's colors each sortie | [hud.md](hud.md) |
 
 ## Features
@@ -23,10 +24,11 @@ Armored Core VI 1.09.1; every address is for that exe. The mod is a package of g
 | DEVICE's brightness | Paint UI only: the game's own materials and menus |
 | WEAPON VFX: effects | Paint UI, storage, effect columns, tinted copies (light waves through the bullet hook) |
 | WEAPON VFX: hit effects | the hit hooks (effect-columns.md, "Melee hit effects"), tinted copies |
-| WEAPON VFX: blades, glows | Paint UI, storage, model copies (the player's part copy, its materials' colors set live) |
+| WEAPON VFX: blades, glows | Paint UI, storage, material overrides |
 
-Without the DLL, everything plays stock: nothing ever asks for the custom columns, the player's AC loads the stock
-weapon parts, nobody's hits get the copies, the HUD movie is used as shipped (it looks stock), and the rows aren't there.
+Without the DLL, everything plays stock: nothing ever asks for the custom columns, no model gets entries for the
+weapon materials' keys, nobody's hits get the copies, the HUD movie is used as shipped (it looks stock), and the rows
+aren't there.
 
 ## The DLL
 
@@ -35,7 +37,7 @@ weapon parts, nobody's hits get the copies, the HUD movie is used as shipped (it
 the player and paint data pointer chains). One thread (`lib.rs` update loop) applies changed settings every 200 ms.
 Log: `Game\debug-logs\customization_plus.log`.
 
-Hooks (18). The game's Arxan protection puts back code it guards at irregular times, removing hooks, so the me3
+Hooks (17). The game's Arxan protection puts back code it guards at irregular times, removing hooks, so the me3
 profile turns it off (`disable_arxan`).
 
 | Hook | Function | For |
@@ -51,8 +53,7 @@ profile turns it off (`disable_arxan`).
 | `0x140829de0` | a character's generator color type | the player's column (columns.rs) |
 | `0x140698380` | bullet effect spawn | the player's bullets' effects through the columns (columns.rs) |
 | `0x1408f0190` | muzzle flash spawn | the player's shots' muzzle flashes through the columns (columns.rs) |
-| `0x1410d8460` | AC parts loader | notes when the player's parts load (weapons.rs) |
-| `0x1415d0080` | part name builder | the player's weapon part copies (weapons.rs) |
+| `0x1410ff770` | a part model's paint | the player's weapon models' color entries (weapons.rs) |
 | `0x140995870`, `0x140995780` | hit effect dispatchers | note the player's melee hits (hits.rs) |
 | `0x140b9f390` | hit effect list | swaps in the weapon's hit copies (hits.rs) |
 | `0x141609040` | menu movie lookup | the HUD movie each sortie (hud.rs) |
@@ -66,8 +67,8 @@ profile turns it off (`disable_arxan`).
 |---|---|---|
 | `regulation.bin` | the game's | custom columns 3-6 of the two effect tables; replace rows for the weapons' effects (`tools/params.py`) |
 | `sfx/sfxbnd_commoneffects.ffxbnd.dcx` | the game's (and ALLMIND's effects from `sfxbnd_m30`) | tinted copies and bundles; neutral model copies (`fxr/build_fxrs.mjs`, `tools/models.py`) |
-| `material/allmaterial.matbinbnd.dcx` | the game's | neutral materials for those models; the weapons' blade material copies (`tools/models.py`, `tools/weapons.py`) |
-| `parts/wp_l_9xxx*.partsbnd.dcx`, `wp_9xxx*.tpf.dcx` | the parts and textures of the weapons with colored materials | the player's copies (`tools/weapons.py`) |
+| `material/allmaterial.matbinbnd.dcx` | the game's | neutral materials for those models (`tools/models.py`) |
+| `shader_d3d12/shaderbdle.shaderbdlebnd.dcx` | the game's | keys on the weapon materials' color params (`tools/shaders.py`; cached in `cache/`, slow to repack) |
 | `menu/02_coloring.gfx` | the Paint movie | the extra rows' clips, their panel, the tall list (`tools/build_gfx.py`) |
 | `menu/01_000_fe.gfx` | the HUD movie | neutral transforms, a table of its colors (`tools/prepare_hud.py`) |
 | `customization_plus.dll`, `customization-plus.me3` | `dll/`, the repo | |
@@ -89,8 +90,8 @@ Limits (a modded weapon may hit them):
   (section 7 still has a color and its pattern colors free).
 - **Effect IDs 990000-999999.** The bullet and muzzle flash hooks only remap that range (`CUSTOM_COLUMN_EFFECTS` in
   `columns.rs` and `tools/weapons.py`); the build stops on others.
-- **Copy numbers.** A part copy's model number is the model's with its leading digit d -> 9 - d; the build stops if
-  that number is taken in the game's parts folder.
+- **Float5 colors.** A colored material's params must be Float5 (rgb, alpha, intensity; the build stops on Float4),
+  and a param can be in only one of a weapon's materials (its entries are for all of the model's materials).
 - **Files in the game folder.** The build reads parts, effects and params from the game folder; a weapon whose files
   come from another mod's package needs them there (or the build pointed at them).
 - **Hit effects** on terrain and AC bodies only (concepts 10, 103), as for the stock weapons.

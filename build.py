@@ -3,9 +3,10 @@
     python build.py --game "<...>/ARMORED CORE VI FIRES OF RUBICON/Game" --witchy "<...>/WitchyBND.exe"
 
 Needs node/npm, cargo (stable) and WitchyBND 3.x. Writes package/: the mod folder (regulation, custom flames and other
-tinted effects, materials, the player's weapon part copies, the Paint movie with the extra rows, the prepared HUD
-movie), the DLL and the me3 profile. The pieces are in tools/ (params.py, models.py, weapons.py, witchy.py,
-build_gfx.py, prepare_hud.py) and fxr/build_fxrs.mjs.
+tinted effects, materials, the shader bundle with the weapon colors' keys, the Paint movie with the extra rows, the
+prepared HUD movie), the DLL and the me3 profile. The pieces are in tools/ (params.py, models.py, weapons.py,
+shaders.py, witchy.py, build_gfx.py, prepare_hud.py) and fxr/build_fxrs.mjs. The shader bundle is slow to repack:
+cached in cache/.
 """
 import argparse
 import atexit
@@ -17,13 +18,14 @@ import struct
 import subprocess
 import sys
 
-from tools import weapons
+from tools import shaders, weapons
 from tools.models import make_neutral_models
 from tools.params import Param
 from tools.witchy import Witchy, unpacked
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 WORK = os.path.join(ROOT, "build")
+CACHE = os.path.join(ROOT, "cache")
 PACKAGE = os.path.join(ROOT, "package")
 
 # Thruster color type N uses column sfxIdN of the generator-dependent effect tables. Stock types 0-2 (orange, blue,
@@ -60,17 +62,18 @@ def main():
     witchy([*archives, allmind], [unpacked(a) for a in [*archives, allmind]])
 
     params = unpacked(regulation)
-    # The melee weapons (tools/weapons.py): their parts (the player's copies are repacked with the archives, the others
-    # only read), their animations and colored materials, what the data says they play, and the DLL's table of them.
+    # The melee weapons (tools/weapons.py): their parts (only read), their animations and colored materials, what the
+    # data says they play, and the DLL's table of them.
     weapon_models = weapons.models(params, defs)
-    weapon_parts, read_parts = weapons.copy_weapon_parts(args.game, WORK, weapon_models)
-    witchy([*weapon_parts, *read_parts], [unpacked(p) for p in [*weapon_parts, *read_parts]])
-    anibnds = weapons.animation_bundles([*weapon_parts, *read_parts])
+    weapon_parts = weapons.copy_weapon_parts(args.game, WORK, weapon_models)
+    witchy(weapon_parts, [unpacked(p) for p in weapon_parts])
+    anibnds = weapons.animation_bundles(weapon_parts)
     matbins = weapons.material_files(os.path.join(unpacked(materials)))
     witchy([*anibnds, *matbins], [*map(unpacked, anibnds), *[m + ".xml" for m in matbins]])
     weapon_data = weapons.derive(params, defs, os.path.join(unpacked(effects), "effect"), weapon_models, anibnds)
     weapons.report(weapon_models, weapon_data)
-    table = weapons.rust_table(weapon_models, weapon_data, weapons.material_colors(unpacked(materials)))
+    weapon_colors = weapons.material_colors(unpacked(materials))
+    table = weapons.rust_table(weapon_models, weapon_data, weapon_colors)
     table_path = os.path.join(ROOT, "dll", "src", "weapon_table.rs")
     if not os.path.exists(table_path) or open(table_path).read() != table:
         open(table_path, "w", newline="\n").write(table)
@@ -118,8 +121,6 @@ def main():
     id_map_path = os.path.join(WORK, "id_map.json")
     input_path = os.path.join(WORK, "fxr_input.json")
     neutral_models = make_neutral_models(os.path.join(unpacked(effects), "model"), unpacked(materials), witchy)
-    built_parts, weapon_textures = weapons.make_weapon_copies(args.game, WORK, weapon_parts, weapon_models,
-                                                              unpacked(materials))
     weapon_inputs, hit_inputs = weapons.fxr_inputs(weapon_models, weapon_data)
     json.dump({"flames": list(flame_rows.values()), "others": expansion_effects, "weapons": weapon_inputs,
                "hits": hit_inputs, "neutralModels": neutral_models}, open(input_path, "w"))
@@ -169,7 +170,8 @@ def main():
     labels = re.search(r"const FLAME_TYPES: \[&str; (\d+)\]", open(os.path.join(ROOT, "dll", "src", "generator.rs")).read())
     assert int(labels.group(1)) == flame_types, f"generator.rs names {labels.group(1)} flame types, the params have {flame_types}"
 
-    witchy([unpacked(a) for a in [*archives, *weapon_parts]], [*archives, *built_parts])
+    witchy([unpacked(a) for a in archives], archives)
+    shader_bundle = shaders.patched_bundle(args.game, CACHE, weapons.shader_keys(weapon_colors), witchy)
 
     assert cargo.wait() == 0, "cargo build failed"
 
@@ -184,9 +186,8 @@ def main():
     shutil.copy(effects, os.path.join(PACKAGE, "mod", "sfx"))
     os.makedirs(os.path.join(PACKAGE, "mod", "material"))
     shutil.copy(materials, os.path.join(PACKAGE, "mod", "material"))
-    os.makedirs(os.path.join(PACKAGE, "mod", "parts"))
-    for part in [*built_parts, *weapon_textures]:
-        shutil.copy(part, os.path.join(PACKAGE, "mod", "parts"))
+    os.makedirs(os.path.join(PACKAGE, "mod", os.path.dirname(shaders.BUNDLE)))
+    shutil.copy(shader_bundle, os.path.join(PACKAGE, "mod", shaders.BUNDLE))
     # The HUD movie with the table of its colors, for the HUD rows (dll/src/hud_movie.rs).
     subprocess.run([sys.executable, os.path.join(ROOT, "tools", "prepare_hud.py"),
                     os.path.join(args.game, "menu", "01_000_fe.gfx"),

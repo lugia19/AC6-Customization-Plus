@@ -39,9 +39,9 @@ pub(crate) fn leak_utf16(text: &str) -> &'static [u16] {
 
 const WORLD_CHR_MAN_ADDR: usize = 0x144e0f598;
 const PLAYER_INS_OFFSET: usize = 0xA5A0;
-// ChrIns: [[+ 0x320]] is its module that the generator color type takes; its AC parts object.
+// ChrIns: [[+ 0x320]] is its module that the generator color type takes; its AC's model object (its part models).
 pub(crate) const CHR_MODULES_OFFSET: usize = 0x320;
-pub(crate) const CHR_PARTS_OFFSET: usize = 0x47e8;
+pub(crate) const CHR_MODEL_OFFSET: usize = 0x47f8;
 // `ChrIns* character_of(FieldIns*)`: a character itself, a bullet's owner (through the bullets that fired it).
 const CHARACTER_OF_ADDR: usize = 0x140b3c790;
 
