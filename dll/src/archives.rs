@@ -6,7 +6,7 @@
 //!   `load(manager, path, load group)` with the step's load group, so its load wait covers ours too.
 //! The paths are build.py's OWN_EFFECTS / OWN_MATERIALS.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use crate::game::{self, game_fn, utf16};
 use crate::{Hook, log, orig};
@@ -27,8 +27,8 @@ type LoadFn = unsafe extern "system" fn(usize, *const u16, usize) -> usize;
 
 static ORIG_STAY_LOAD: AtomicUsize = AtomicUsize::new(0);
 static ORIG_MATERIALS_STEP: AtomicUsize = AtomicUsize::new(0);
-static EFFECTS: AtomicUsize = AtomicUsize::new(0);
-static MATERIALS: AtomicUsize = AtomicUsize::new(0);
+static EFFECTS: AtomicBool = AtomicBool::new(false);
+static MATERIALS: AtomicBool = AtomicBool::new(false);
 
 pub(crate) fn hooks() -> [Hook; 2] {
     [
@@ -39,17 +39,16 @@ pub(crate) fn hooks() -> [Hook; 2] {
     ]
 }
 
-/// Loads an archive once (`held` keeps its handle; the debug reloads run these steps again).
-fn load_once(held: &AtomicUsize, what: &str, load: impl FnOnce() -> Option<usize>) {
-    if held.load(Ordering::Relaxed) != 0 {
+/// Loads an archive once (the debug reloads run these steps again) and never releases it.
+fn load_once(loaded: &AtomicBool, what: &str, load: impl FnOnce() -> Option<usize>) {
+    if loaded.load(Ordering::Relaxed) {
         return;
     }
-    match load().filter(|&handle| handle != 0) {
-        Some(handle) => {
-            held.store(handle, Ordering::Relaxed);
-            log(&format!("archives: requested our {what}"));
-        }
-        None => log(&format!("archives: couldn't request our {what}")),
+    if load().is_some_and(|handle| handle != 0) {
+        loaded.store(true, Ordering::Relaxed);
+        log(&format!("archives: requested our {what}"));
+    } else {
+        log(&format!("archives: couldn't request our {what}"));
     }
 }
 

@@ -93,8 +93,9 @@ Limits (a modded weapon may hit them):
 - **Twenty weapons.** Their colors are saved in two free paint sections' ten color fields each
   ([storage.md](storage.md)), in `WEAPONS`' order (never reorder it). More need another place to save their colors
   (section 7 still has a color and its pattern colors free).
-- **Effect IDs 990000-999999.** The bullet and muzzle flash hooks only remap that range (`CUSTOM_COLUMN_EFFECTS` in
-  `columns.rs` and `tools/weapons.py`); the build stops on others.
+- **Its effects are its own.** Every effect a weapon plays gets a replace row with the weapon's tinted copy, so an
+  effect the player's AC also plays for something else would take the weapon's color there too (the stock weapons'
+  effects are their own, 990000-999999). The build stops if two weapons play the same effect.
 - **Float5 colors.** A colored material's params must be Float5 (rgb, alpha, intensity; the build stops on Float4),
   and a param can be in only one of a weapon's materials (its entries are for all of the model's materials).
 - **Files in the game folder.** The build reads parts, effects and params from the game folder; a weapon whose files

@@ -44,8 +44,6 @@ assert len(WEAPONS) <= 20, "the weapons' colors are saved in twenty color fields
 # A weapon's color is served on nine external values from EXT_BASE + EXT_BLOCK * its model (dll/src/ext_values.rs).
 EXT_BASE = 900000
 EXT_BLOCK = 10
-# The effects the DLL can give the player's own columns (dll/src/columns.rs CUSTOM_COLUMN_EFFECTS).
-CUSTOM_COLUMN_EFFECTS = range(990000, 1000000)
 # Hit effects get a copy per weapon: the pair at stock + model * HIT_MODEL_STRIDE + HIT_OFFSETS, their bundle at
 # + HIT_BUNDLE_OFFSET (dll/src/hits.rs swaps it in).
 HIT_MODEL_STRIDE = 100000
@@ -183,8 +181,6 @@ def derive(regulation, defs, effect_dir, model_ids, anibnds):
         attacks, bullets = data.attacks_and_bullets(weapon)
         effects = tae_effects(anibnd) | {data.bullets.get(b, f) for b in bullets for f in BULLET_EFFECT_FIELDS}
         effects = {sfx for sfx in effects if sfx > 0}
-        outside = sorted(sfx for sfx in effects if sfx not in CUSTOM_COLUMN_EFFECTS)
-        assert not outside, f"weapon {weapon.id} plays effects the DLL can't give columns: {outside}"
         missing = sorted(sfx for sfx in effects if not exists(sfx))
         hits = {data.hit_effect(c, *a) for c in HIT_CONCEPTS for a in attacks} - {0, -1}
         assert all(exists(sfx) for sfx in hits), f"weapon {weapon.id}: hit effects without a file"

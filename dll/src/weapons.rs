@@ -58,10 +58,9 @@ const SLOTS: [WeaponSlot; 2] = [
     WeaponSlot { assembly: SLOT_LEFT_ARM, parts: 6, section: 8 },
     WeaponSlot { assembly: SLOT_LEFT_BACK, parts: 7, section: 13 },
 ];
-// The third entry: the expansion color, one for every expansion (so not labelled with one), in section 7's third color
-// field (where the old GENERATOR row kept it), served on 900021 on; the preview flashes nothing for it.
+// The third entry: the expansion color, one for every expansion (rows::EXPANSION_COLOR_FIELD), served on 900021 on; the
+// preview flashes nothing for it.
 const EXPANSION_ENTRY: usize = SLOTS.len();
-const EXPANSION_STORAGE: (usize, usize) = (7, 2);
 const EXPANSION_EXT_FIRST: i32 = 900021;
 const EXPANSION_DEFAULT: u32 = 0xFFFFFF;
 static UNIT_SECTIONS: [u8; 2] = [SLOTS[0].section, SLOTS[1].section];
@@ -241,7 +240,7 @@ fn equipped_index(slot: usize) -> Option<usize> {
 
 /// The expansion's color in the paint block.
 fn expansion_offset() -> usize {
-    rows::color_field(EXPANSION_STORAGE.0, EXPANSION_STORAGE.1)
+    rows::color_field(rows::EXPANSION_COLOR_FIELD.0, rows::EXPANSION_COLOR_FIELD.1)
 }
 
 /// The panel's entry `which`: the color of the weapon equipped in its slot, or the expansion color.
@@ -275,7 +274,7 @@ pub(crate) struct Weapons {
 }
 
 impl Weapons {
-    /// Applies the colors (the weapons' and the expansion's) to the effects' external values when they change. The weapon models get theirs when they're
+    /// Applies the colors to the effects' external values when they change. The weapon models get theirs when they're
     /// built (only AC TEST and sorties show them, which build them).
     pub(crate) fn update(&mut self) {
         let expansion = rows::picked_at(expansion_offset()).unwrap_or(EXPANSION_DEFAULT);

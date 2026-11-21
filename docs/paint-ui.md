@@ -170,9 +170,9 @@ never show a hidden child again (a hidden material icon stayed hidden in every p
   through all its frames (it flickers) as soon as the game plays its grey-out animation, which it does while another
   row is being edited.
 - **Panel clips.** The game fills a panel's items with its entries in order, so the rows get two clips, copies of the
-  Color / Material panel: `Color_Material_Color_Select` with items color, color, material, color (`Item_3_0` added
-  below the others) for rows with a choice, and `Color_Color_Color_Select` with color, color, color for rows without
-  one (WEAPON VFX: its third color on a material item would show no swatch). Both are placed visible like the stock
+  Color / Material panel: `Color_Color_Material_Select` with items color, color, material for rows with a choice
+  (`rows::claim` allows two colors with one), and `Color_Color_Color_Select` with color, color, color for rows without
+  (WEAPON VFX: its third color on a material item would show no swatch). Both are placed visible like the stock
   panels (the MainContent timeline replays its placements when a sub-window closes) and hidden at screen setup
   (`0x140f3fd90`, where the game hides its own three).
 - **Tall list.** The stock list host `Text_ItemList` shows 3 items. `Text_ItemList_Tall` is a copy with 11 item

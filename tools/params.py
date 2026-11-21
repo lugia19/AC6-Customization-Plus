@@ -14,7 +14,6 @@ class Param:
     params without one)."""
 
     def __init__(self, path, def_path=None, layout=None):
-        self.path = path
         self.data = bytearray(open(path, "rb").read())
 
         # Field definitions like "s32 sfxId0", "u8 flag:1" (a bitfield) or "dummy8 pad[4]" (an array).

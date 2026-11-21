@@ -14,6 +14,21 @@ def unpacked(path):
     return os.path.join(os.path.dirname(path), folder)
 
 
+def empty_like(path, stock, *subfolders):
+    """An empty unpacked folder for a new archive at `path`, shaped like the unpacked archive `stock`: its WitchyBND
+    manifest under our file name (WitchyBND packs whatever files the folder holds), and `subfolders`, returned."""
+    folder = unpacked(path)
+    os.makedirs(folder)
+    manifest = next(f for f in os.listdir(stock) if f.startswith("_witchy"))
+    text = open(os.path.join(stock, manifest), encoding="utf-8-sig").read()
+    stock_name = re.search(r"<filename>(.*?)</filename>", text).group(1)
+    open(os.path.join(folder, manifest), "w", encoding="utf-8-sig").write(text.replace(stock_name, os.path.basename(path)))
+    paths = [os.path.join(folder, sub) for sub in subfolders]
+    for sub in paths:
+        os.makedirs(sub)
+    return paths
+
+
 class Witchy:
     def __init__(self, exe):
         self.exe = exe

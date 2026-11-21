@@ -32,22 +32,15 @@ FIRST_NEW_ROW = 9  # Item_<n>_0
 CONTENT_SPRITE = 269
 STOCK_PANEL_SPRITE = 192
 # The Color / Material panel's items: Item_0_0 color, Item_1_0 material, Item_2_0 Paint Pattern. The game fills a
-# panel's items with its entries in order, so the extra rows get two panels (dll/src/panel.rs picks one): for rows with
-# a choice, color, color, material, color (a row's color, second color, choices, third color); for rows without one
-# (WEAPON VFX), color, color, color.
+# panel's items with its entries in order, so the extra rows get two panels (dll/src/panel.rs picks one): color, color,
+# material for rows with a choice; color, color, color for rows without (WEAPON VFX).
 PANEL_COLOR_ITEM = 191
 PANEL_MATERIAL_ITEM = 185
 PANEL_PATTERN_ITEM = 178
-# The fourth item: free depth (the stock items use 10, 22, 36), position one item pitch (2280) below Item_2_0.
-ROWS_PANEL_ITEM_3_DEPTH = 48
-ROWS_PANEL_ITEM_3 = (10900, 8940 + 2280)
-# (sprite ID, name, depth in the content sprite (free, right above the stock panel's), the stock items it replaces,
-# whether it has a fourth item, a color)
+# (sprite ID, name, depth in the content sprite (free, right above the stock panel's), the stock items it replaces)
 ROWS_PANELS = [
-    (402, "Color_Material_Color_Select", 119,
-     {PANEL_MATERIAL_ITEM: PANEL_COLOR_ITEM, PANEL_PATTERN_ITEM: PANEL_MATERIAL_ITEM}, True),
-    (406, "Color_Color_Color_Select", 120,
-     {PANEL_MATERIAL_ITEM: PANEL_COLOR_ITEM, PANEL_PATTERN_ITEM: PANEL_COLOR_ITEM}, False),
+    (402, "Color_Color_Material_Select", 119, {PANEL_MATERIAL_ITEM: PANEL_COLOR_ITEM, PANEL_PATTERN_ITEM: PANEL_MATERIAL_ITEM}),
+    (406, "Color_Color_Color_Select", 120, {PANEL_MATERIAL_ITEM: PANEL_COLOR_ITEM, PANEL_PATTERN_ITEM: PANEL_COLOR_ITEM}),
 ]
 STOCK_PANEL_DEPTH = 118  # the Color / Material panel's in the content sprite
 
@@ -262,10 +255,8 @@ def row_sprite(stock_row, new_id, row_y, slice_top, texture, header):
     return tag(DEFINE_SPRITE, struct.pack("<H", new_id) + frame_count + body)
 
 
-def rows_panel_sprite(stock_panel, panel_id, items, fourth):
-    """The Color / Material panel sprite (its tag's content) with its items replaced as `items` says, and with `fourth`
-    a fourth item (a color) below them. Its background already reaches past it (sized for the Paint Pattern
-    preview)."""
+def rows_panel_sprite(stock_panel, panel_id, items):
+    """The Color / Material panel sprite (its tag's content) with its items replaced as `items` says."""
     body, swapped = b"", 0
     for tag_type, header, _, raw in tags(stock_panel, 4, len(stock_panel)):
         place = raw[header:]
@@ -273,19 +264,16 @@ def rows_panel_sprite(stock_panel, panel_id, items, fourth):
             new = items[struct.unpack_from("<H", place, 3)[0]]
             raw = tag(PLACE_OBJECT2, place[:3] + struct.pack("<H", new) + place[5:])
             swapped += 1
-        if tag_type == SHOW_FRAME and fourth:
-            body += tag(PLACE_OBJECT2, bytes([0x26]) + struct.pack("<HH", ROWS_PANEL_ITEM_3_DEPTH, PANEL_COLOR_ITEM)
-                        + matrix(*ROWS_PANEL_ITEM_3) + b"Item_3_0\0")
         body += raw
     assert swapped == len(items), "rows panel sprite: an item to replace isn't placed exactly once"
     return tag(DEFINE_SPRITE, struct.pack("<H", panel_id) + stock_panel[2:4] + body)
 
 
-def add_rows_panel(d, panel_id, name, depth, items, fourth):
+def add_rows_panel(d, panel_id, name, depth, items):
     """Adds one of the extra rows' panels (ROWS_PANELS) to the content sprite. Returns the bytes added."""
     stock_pos, stock_header, stock_length = find_sprite(d, STOCK_PANEL_SPRITE)
     sprite = rows_panel_sprite(bytes(d[stock_pos + stock_header:stock_pos + stock_header + stock_length]), panel_id,
-                               items, fourth)
+                               items)
     content_pos, content_header, content_length = find_sprite(d, CONTENT_SPRITE)
     assert content_header == 6, "content sprite must use the long length form"
     content_tags = list(tags(d, content_pos + content_header + 4, content_pos + content_header + content_length))

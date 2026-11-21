@@ -38,6 +38,8 @@ struct Storage {
     first_color: usize,
     choice_material: usize,
 }
+// Section 7's third color: WEAPON VFX's expansion color (THRUSTERS has two colors, HUD starts at the fourth).
+pub(crate) const EXPANSION_COLOR_FIELD: (usize, usize) = (7, 2);
 static STORAGE: [Storage; ROW_COUNT] = [
     Storage { section: 7, first_color: 0, choice_material: 0 },
     Storage { section: 7, first_color: 3, choice_material: 1 },
@@ -146,8 +148,8 @@ pub(crate) fn claim(
     choices: Option<(&str, &[&str], u32)>,
 ) {
     assert!(extra_colors.len() < MAX_COLORS);
-    assert!(choices.is_none() || !extra_colors.is_empty());
-    assert!(extra_colors.len() < 2 || choices.is_some());
+    // Their panel's items (panel.rs): color, color, choice; or up to three colors.
+    assert!(choices.is_none() || extra_colors.len() == 1);
     let choices = choices.map(|(title, labels, default)| {
         assert!(!labels.is_empty() && labels.len() <= CHOICE_MASK as usize && (default as usize) < labels.len());
         let labels = labels.iter().map(|label| leak_utf16(label)).collect::<Vec<_>>().leak();

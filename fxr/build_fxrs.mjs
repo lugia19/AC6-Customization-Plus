@@ -349,14 +349,12 @@ const sourceFile = id => (isAllmind(id) ? path.join(allmindDir, fileName(id)) : 
 // A path, not fs.readFileSync: small files come back as views into Node's shared buffer pool, which the library
 // reads from the pool's start.
 const read = id => FXR.read(sourceFile(id), Game.ArmoredCore6)
-// The effect dir is a fresh unpack of the game's effects, so a file there at a new ID is a stock effect. The bundles
-// dir is ours to overwrite.
+// The bundles dir is ours to overwrite (build.py checks our files against the stock ones).
 const saved = new Set()
 async function save(fxr) {
   if (saved.has(fxr.id)) throw new Error(`${fxr.id} built twice`)
   saved.add(fxr.id)
   if (bundlesDir) return fxr.saveAs(path.join(bundlesDir, fileName(fxr.id)), Game.ArmoredCore6)
-  if (fs.existsSync(file(fxr.id))) throw new Error(`${fxr.id} would clash with an existing effect`)
   await fxr.saveAs(path.join(outDir, fileName(fxr.id)), Game.ArmoredCore6)
 }
 

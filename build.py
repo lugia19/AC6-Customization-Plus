@@ -21,7 +21,7 @@ import sys
 from tools import shaders, weapons
 from tools.models import make_neutral_models
 from tools.params import Param
-from tools.witchy import Witchy, unpacked
+from tools.witchy import Witchy, empty_like, unpacked
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 WORK = os.path.join(ROOT, "build")
@@ -35,8 +35,7 @@ PACKAGE = os.path.join(ROOT, "package")
 STOCK_COLOR_TYPES = (0, 1, 2)
 FIRST_CUSTOM_TYPE = 3
 CUSTOM_TYPES_STOCK = (0, 1, 2, 1)
-# GeneratorTypeSfxIdRplace_PC rows with custom columns: the core expansions' (assault armor, pulse armor, pulse
-# protection...) and the melee weapons' (tools/weapons.py); dll/src/columns.rs CUSTOM_COLUMN_EFFECTS mirrors it.
+# GeneratorTypeSfxIdRplace_PC's core expansion rows (assault armor, pulse armor, pulse protection...).
 EXPANSION_ROWS = range(990000, 1000000)
 # Thruster effect rows that stay stock: the exhaust fumes (smoke only, no flame).
 STOCK_FLAME_ROWS = {410031}
@@ -49,23 +48,26 @@ MAX_EFFECT_ENTRIES = 99999
 
 
 def write_generated(name, text):
-    """A generated file of the DLL's (dll/src, committed so the DLL builds on its own), rewritten only on a change."""
+    """A generated file of the DLL's (dll/src, committed so the DLL builds on its own), rewritten only on a change.
+    Returns whether it changed."""
     path = os.path.join(ROOT, "dll", "src", name)
-    if not os.path.exists(path) or open(path).read() != text:
-        open(path, "w", newline="\n").write(text)
-        print(f"Updated {path}")
+    if os.path.exists(path) and open(path).read() == text:
+        return False
+    open(path, "w", newline="\n").write(text)
+    print(f"Updated {path}")
+    return True
 
 
-def own_archive(path, stock):
-    """An empty unpacked folder for our archive at `path`, shaped like the unpacked stock archive `stock`: its
-    WitchyBND manifest with our file name (WitchyBND packs the folder's files)."""
-    folder = unpacked(path)
-    os.makedirs(folder)
-    manifest = next(f for f in os.listdir(stock) if f.startswith("_witchy"))
-    text = open(os.path.join(stock, manifest), encoding="utf-8-sig").read()
-    stock_name = re.search(r"<filename>(.*?)</filename>", text).group(1)
-    open(os.path.join(folder, manifest), "w", encoding="utf-8-sig").write(text.replace(stock_name, os.path.basename(path)))
-    return folder
+def build_dll():
+    """cargo, in the background; killed if the build fails meanwhile (it would hold the target dir)."""
+    cargo = subprocess.Popen(["cargo", "+stable", "build", "--release"], cwd=os.path.join(ROOT, "dll"))
+    atexit.register(lambda: cargo.poll() is None and cargo.kill())
+    return cargo
+
+
+def file_names(folder):
+    """The lowercased names of a folder's files, recursively (the game registers files by name)."""
+    return {f.lower() for _, _, names in os.walk(folder) for f in names if not f.startswith("_witchy")}
 
 
 def main():
@@ -79,21 +81,18 @@ def main():
 
     shutil.rmtree(WORK, ignore_errors=True)
     os.makedirs(WORK)
-    regulation = shutil.copy(os.path.join(args.game, "regulation.bin"), WORK)
-    effects = shutil.copy(os.path.join(args.game, "sfx", "sfxbnd_commoneffects.ffxbnd.dcx"), WORK)
-    materials = shutil.copy(os.path.join(args.game, "material", "allmaterial.matbinbnd.dcx"), WORK)
     # Only read: the params, the stock effects and materials (what our copies start from), and ALLMIND's thruster
     # effects for the ALLMIND flame type's extras (fxr/build_fxrs.mjs).
-    allmind = shutil.copy(os.path.join(args.game, "sfx", "sfxbnd_m30.ffxbnd.dcx"), WORK)
-    witchy([effects, materials, regulation, allmind], [unpacked(a) for a in [effects, materials, regulation, allmind]])
+    regulation, effects, materials, allmind = stock = [
+        shutil.copy(os.path.join(args.game, path), WORK)
+        for path in ("regulation.bin", os.path.join("sfx", "sfxbnd_commoneffects.ffxbnd.dcx"),
+                     os.path.join("material", "allmaterial.matbinbnd.dcx"), os.path.join("sfx", "sfxbnd_m30.ffxbnd.dcx"))]
+    witchy(stock, [unpacked(a) for a in stock])
     own_effects = os.path.join(WORK, os.path.basename(OWN_EFFECTS))
     own_materials = os.path.join(WORK, os.path.basename(OWN_MATERIALS))
-    own_effect_folder = own_archive(own_effects, unpacked(effects))
-    own_effect_dir, own_model_dir, own_reslist_dir = (os.path.join(own_effect_folder, sub)
-                                                      for sub in ("effect", "model", "ResourceList"))
-    own_material_dir = os.path.join(own_archive(own_materials, unpacked(materials)), "sfx")
-    for folder in (own_effect_dir, own_model_dir, own_reslist_dir, own_material_dir):
-        os.makedirs(folder)
+    own_effect_dir, own_model_dir, own_reslist_dir = empty_like(own_effects, unpacked(effects), "effect", "model",
+                                                                "ResourceList")
+    own_material_dir, = empty_like(own_materials, unpacked(materials), "sfx")
 
     params = unpacked(regulation)
     # The melee weapons (tools/weapons.py): their parts (only read), their animations and colored materials, what the
@@ -108,6 +107,8 @@ def main():
     weapons.report(weapon_models, weapon_data)
     weapon_colors = weapons.material_colors(unpacked(materials))
     write_generated("weapon_table.rs", weapons.rust_table(weapon_models, weapon_data, weapon_colors))
+    # The DLL's other generated table (effect_table.rs) comes after the effects are built: built again if it changes.
+    cargo = build_dll()
 
     # The generator-dependent effect tables: row = an effect the game spawns, column t (sfxId<t>) = what it uses for
     # generator color type t, -1 = the row's own effect (e.g. row 1003010, the assault boost startup flare, has no
@@ -161,57 +162,62 @@ def main():
     # for the bundles, which only hold proxies).
     reslists = os.path.join(unpacked(effects), "ResourceList")
     for new_id, source_id in id_map["resources"].items():
-        name = f"f{int(new_id):09d}.ffxreslist"
-        assert not os.path.exists(os.path.join(reslists, name)), f"{new_id} collides with an existing effect"
-        target = os.path.join(own_reslist_dir, name)
-        name = f"f{source_id:09d}.ffxreslist"
-        source = os.path.join(reslists, name)
+        target = os.path.join(own_reslist_dir, f"f{int(new_id):09d}.ffxreslist")
+        source_name = f"f{source_id:09d}.ffxreslist"
+        source = os.path.join(reslists, source_name)
         if not os.path.exists(source):  # ALLMIND's effects are in their own bnd
-            source = os.path.join(unpacked(allmind), "ResourceList", name)
+            source = os.path.join(unpacked(allmind), "ResourceList", source_name)
         resource_list = open(source, "rb").read()
         for model, neutral in neutral_models.items():
             resource_list = resource_list.replace(f"s{model}.sib".encode(), f"s{neutral}.sib".encode())
         open(target, "wb").write(resource_list)
 
-    # The custom types' columns, which the DLL's lookup hooks answer (dll/src/effect_table.rs; the regulation stays
-    # stock): a flame row's bundles in the thruster table, what the matching stock type uses everywhere else (e.g. a
-    # Coral flame type gets the Coral expansion effects), as its bundle if it has one. The weapons' effects get rows
-    # of their own, playing their tinted copies. A lookup returns the row itself for a row or column it lacks, so
+    # The custom types' columns, answered by the DLL's lookup hooks (the regulation stays stock): a flame row's
+    # bundles in the thruster table, what the matching stock type uses elsewhere (as its bundle if it has one), and
+    # rows of their own for the weapons' effects. A lookup returns the row itself for a row or column it lacks, so
     # values equal to the row are left out.
     weapon_rows = weapons.effect_rows(weapon_data)
     assert len(set(weapon_rows)) == len(weapon_rows), "an effect is played by two weapons (it has one color)"
     lines = ["// Generated by build.py from the game's effect tables and the custom copies: don't edit.",
-             "// Included by columns.rs: per row, its custom types' effects (FIRST_CUSTOM_TYPE on), -1 = the row's own.", ""]
+             "// Included by columns.rs: per row, its custom types' effects (FIRST_CUSTOM_TYPE on), -1 = the row's own.", "",
+             f"const CUSTOM_TYPES: usize = {len(CUSTOM_TYPES_STOCK)};", ""]
     for name, table, bundles, added in [("THRUSTER_COLUMNS", thrusters, bundles_of, []),
                                         ("REPLACE_COLUMNS", replace, {}, weapon_rows)]:
         assert not set(added) & set(table.rows), f"{name}: rows {sorted(set(added) & set(table.rows))} exist"
         entries = []
         for row in sorted([*table.rows, *added]):
+            if row in table.rows:
+                assert all(table.get(row, f"sfxId{FIRST_CUSTOM_TYPE + k}") == -1 for k in range(len(CUSTOM_TYPES_STOCK))), \
+                    f"{name} row {row}: a custom column in use"
             values = []
             for k, t in enumerate(CUSTOM_TYPES_STOCK):
-                if row in table.rows:
-                    assert table.get(row, f"sfxId{FIRST_CUSTOM_TYPE + k}") == -1, f"{name} row {row}: column in use"
-                sfx = bundles[row][k] if row in bundles else effect_for(table, row, t) if row in table.rows else row
+                if row in bundles:
+                    sfx = bundles[row][k]
+                elif row in table.rows:
+                    sfx = effect_for(table, row, t)
+                else:
+                    sfx = row
                 sfx = other_bundles.get(sfx, sfx)
                 values.append(-1 if sfx == row else sfx)
-            if values != [-1] * len(values):
+            if any(value != -1 for value in values):
                 entries.append(f"    ({row}, [{', '.join(map(str, values))}]),")
-        lines += [f"const {name}: [(i32, [i32; {len(CUSTOM_TYPES_STOCK)}]); {len(entries)}] = [", *entries, "];", ""]
-    write_generated("effect_table.rs", "\n".join(lines))
-
-    # The DLL's generated tables are written: build it while the archives repack.
-    cargo = subprocess.Popen(["cargo", "+stable", "build", "--release"], cwd=os.path.join(ROOT, "dll"))
-    # If a later step fails, don't leave it compiling (and holding the target dir) after the build exits.
-    atexit.register(lambda: cargo.poll() is None and cargo.kill())
+        lines += [f"const {name}: [(i32, [i32; CUSTOM_TYPES]); {len(entries)}] = [", *entries, "];", ""]
+    if write_generated("effect_table.rs", "\n".join(lines)):
+        cargo.wait()
+        cargo = build_dll()
 
     # The THRUSTERS row's choices (dll/src/thrusters.rs FLAME_TYPES): "generator's own" and the custom flame types.
     flame_types = 1 + len(CUSTOM_TYPES_STOCK)
     labels = re.search(r"const FLAME_TYPES: \[&str; (\d+)\]", open(os.path.join(ROOT, "dll", "src", "thrusters.rs")).read())
     assert int(labels.group(1)) == flame_types, f"thrusters.rs names {labels.group(1)} flame types, the params have {flame_types}"
 
+    # Our files are additions: the first archive loaded owns a name, so none may share one with a stock file.
+    for ours, theirs in [(own_effects, effects), (own_materials, materials)]:
+        clashes = file_names(unpacked(ours)) & file_names(unpacked(theirs))
+        assert not clashes, f"{os.path.basename(ours)}: {sorted(clashes)[:5]} are stock files"
     effect_count = len(os.listdir(own_effect_dir))
     assert effect_count < MAX_EFFECT_ENTRIES, f"{effect_count} effects: the game registers fewer than {MAX_EFFECT_ENTRIES}"
-    witchy([own_effect_folder, unpacked(own_materials)], [own_effects, own_materials])
+    witchy([unpacked(own_effects), unpacked(own_materials)], [own_effects, own_materials])
     shader_bundle = shaders.patched_bundle(args.game, CACHE, weapons.shader_keys(weapon_colors), witchy)
 
     assert cargo.wait() == 0, "cargo build failed"
