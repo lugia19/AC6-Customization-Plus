@@ -54,9 +54,6 @@ color, a weapon keeps its stock look, and its effects get a color close to their
 
 Everything is stored in the AC's paint data, so it's saved with the AC and carried by designs.
 
-Coming from 0.1.0 (AC6-Thruster-Customization)? The save file has a new name: rename `PaintMenu.sl2` to
-`CustomizationPlus.sl2` in your save folder to keep what you did there.
-
 ## Known issues
 
 - The Paint screen's pattern thumbnails can break after going in and out of it, or after a mission: the PATTERN
