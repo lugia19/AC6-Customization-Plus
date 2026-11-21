@@ -194,6 +194,7 @@ def main():
                     os.path.join(PACKAGE, "mod", "menu", "01_000_fe.gfx")], check=True)
     shutil.copy(os.path.join(ROOT, "dll", "target", "release", "customization_plus.dll"), PACKAGE)
     shutil.copy(os.path.join(ROOT, "customization-plus.me3"), PACKAGE)
+    shutil.copy(os.path.join(ROOT, "launch.bat"), PACKAGE)
     print(f"Built {PACKAGE}")
 
 

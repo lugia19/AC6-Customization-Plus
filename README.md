@@ -12,7 +12,8 @@ More to customize in Armored Core VI's Paint screen (1.09.1), saved with each AC
 ## Use
 
 1. Grab the zip from [Releases](../../releases) (or build it, below), extract it anywhere, and launch
-   `customization-plus.me3` with [me3](https://github.com/garyttierney/me3).
+   `customization-plus.me3` with [me3](https://github.com/garyttierney/me3) (or run `launch.bat`, if me3 is on your
+   PATH).
    It uses its own save, `CustomizationPlus.sl2`, which me3 copies from your real save on first launch.
 2. In the garage, Paint: below WEATHERING there's a new panel, ENTIRE AC, with three rows. Each is one setting for
    the whole AC, whichever part tab is open. Confirming a row opens its panel, like MAIN's Color / Material.
@@ -97,7 +98,7 @@ python build.py --game "<...>/ARMORED CORE VI FIRES OF RUBICON/Game" --witchy "<
 ```
 
 Needs Python 3, node/npm, cargo (stable) and [WitchyBND](https://github.com/ividyon/WitchyBND) 3.x. It writes
-`package/`: the mod folder, `customization_plus.dll` and `customization-plus.me3`. The first build also repacks the
+`package/`: the mod folder, `customization_plus.dll`, `customization-plus.me3` and `launch.bat`. The first build also repacks the
 game's 218 MB shader bundle, which takes a few minutes; it's kept in `cache/` and redone only when the game's copy
 changes.
 
