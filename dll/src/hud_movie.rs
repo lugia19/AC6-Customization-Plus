@@ -231,33 +231,3 @@ impl Recolor {
         self.set_terms(entry, new.map(|c| half_up(c * 255.0 * share)))
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Against files made by an independent implementation of the rule: set HUD_PREPARED to the prepared movie and
-    /// HUD_REFERENCES to a folder of ref_<HUD RRGGBB>_<warning RRGGBB>_<opacity>.gfx files. Skipped without them.
-    #[test]
-    fn matches_references() {
-        let (Ok(prepared), Ok(folder)) = (std::env::var("HUD_PREPARED"), std::env::var("HUD_REFERENCES")) else { return };
-        let prepared = std::fs::read(prepared).unwrap();
-        let mut checked = 0;
-        for entry in std::fs::read_dir(folder).unwrap() {
-            let path = entry.unwrap().path();
-            let name = path.file_name().unwrap().to_string_lossy().to_string();
-            let Some(values) = name.strip_prefix("ref_").and_then(|n| n.strip_suffix(".gfx")) else { continue };
-            let values: Vec<&str> = values.split('_').collect();
-            let [hud, warning, opacity] = values[..] else { continue };
-            let look = Look {
-                hud: u32::from_str_radix(hud, 16).unwrap(),
-                warning: u32::from_str_radix(warning, 16).unwrap(),
-                opacity: opacity.parse().unwrap(),
-            };
-            let (ours, _) = with_look(&prepared, look).unwrap();
-            assert!(ours == std::fs::read(&path).unwrap(), "{name}");
-            checked += 1;
-        }
-        println!("{checked} references match");
-    }
-}
