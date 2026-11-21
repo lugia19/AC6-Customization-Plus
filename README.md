@@ -14,7 +14,7 @@ More to customize in Armored Core VI's Paint screen (1.09.1), saved with each AC
 1. Grab the zip from [Releases](../../releases) (or build it, below), extract it anywhere, and launch
    `customization-plus.me3` with [me3](https://github.com/garyttierney/me3).
    It uses its own save, `CustomizationPlus.sl2`, which me3 copies from your real save on first launch.
-2. In the garage, Paint: below WEATHERING there's a new panel, ENTIRE AC, with two rows. Each is one setting for
+2. In the garage, Paint: below WEATHERING there's a new panel, ENTIRE AC, with three rows. Each is one setting for
    the whole AC, whichever part tab is open. Confirming a row opens its panel, like MAIN's Color / Material.
 
 **GENERATOR**: a thruster color, an accent color, a flame type and an expansion color. Until you pick a color, it's
@@ -43,11 +43,6 @@ panel with its color and a Brightness entry, which opens the game's own material
 intensities (Brightness 10% to 450%), per part like any material. NPC ACs use them; the stock menu just never let you reach
 them.
 
-Coming from a build with the HUD WARNING row: the warning color is now in the HUD row's panel, and a warning color
-picked before isn't carried over.
-
-Everything is stored in the AC's paint data, so it's saved with the AC and carried by designs.
-
 **WEAPON VFX** is for your melee weapons: its panel shows the melee weapon on your left arm and the one in your left
 weapon bay, each with its color; like the game's own rows, the preview flashes the weapon you're on. Every melee weapon
 keeps its own color on the AC, so swapping weapons shows each one's color, and dark colors work as they do for the
@@ -55,6 +50,8 @@ thrusters. Covered: the energy blades (HI-32: BU-TT/A, Vvc-770LB, WLT 101, VP-67
 Vvc-774LS, VE-67LLA: blade or glow and effects, light waves included), the HMMR plasma thrower (its chain and effects)
 and the VP-67EB stun baton (effects). Only your AC changes; enemies with the same weapon keep the stock look. Without a
 color, a weapon keeps its stock look, and its effects get a color close to their stock one.
+
+Everything is stored in the AC's paint data, so it's saved with the AC and carried by designs.
 
 Coming from 0.1.0 (AC6-Thruster-Customization)? The save file has a new name: rename `PaintMenu.sl2` to
 `CustomizationPlus.sl2` in your save folder to keep what you did there.
@@ -100,7 +97,9 @@ python build.py --game "<...>/ARMORED CORE VI FIRES OF RUBICON/Game" --witchy "<
 ```
 
 Needs Python 3, node/npm, cargo (stable) and [WitchyBND](https://github.com/ividyon/WitchyBND) 3.x. It writes
-`package/`: the mod folder, `customization_plus.dll` and `customization-plus.me3`.
+`package/`: the mod folder, `customization_plus.dll` and `customization-plus.me3`. The first build also repacks the
+game's 218 MB shader bundle, which takes a few minutes; it's kept in `cache/` and redone only when the game's copy
+changes.
 
 WitchyBND 3.0.1 refuses to repack 1.09.1 regulations out of the box: raise the version in its
 `Assets/Paramdex/AC6/Upgrader/version.txt` to `1_09_1_0042L`.
